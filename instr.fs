@@ -43,8 +43,7 @@ type ConditionCode =
 | AL
 | NV
 
-type Nibble = uint32
-
+type Nibble = uint32 //placeholder
 
 type FLexOp =
 | Rot of Nibble*byte
