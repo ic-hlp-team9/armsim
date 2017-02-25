@@ -52,3 +52,26 @@ type FLexOp =
 type ArithLogicInstr = {Cond: ConditionCode; Op: ArithLogicOp; S:bool; Rd: RegisterName; Rn: RegisterName; Op2: FLexOp}
 type MoveInstr = {Cond: ConditionCode; Op: MoveOp; S:bool; Rd: RegisterName; Op2: FLexOp}
 type TestInstr = {Cond: ConditionCode; Op: TestOp; S:bool; Rn: RegisterName; Op2: FLexOp}
+
+
+type ShiftOp =
+| ASR
+| LSL
+| LSR
+| ROR
+| RRX
+
+type ImReg =
+| Immediate of int
+| Register of RegisterName
+
+type ShiftInstr = {Cond: ConditionCode; Op: ShiftOp; S:bool; Rd: RegisterName; Rn: RegisterName; Param: ImReg option} //Last parameter is option becase RRX only has 2 registers as parameters
+
+type MultOp = 
+| MUL
+| MLA
+| MLS
+| UMULL
+| UMLAL
+
+type MultInstr = {Cond: ConditionCode; Op: MultOp; S:bool option; Rd: RegisterName; Rm: RegisterName; Rs: RegisterName; Rn: RegisterName option} //Mul only has 3 registers as parameters that's why last one is option; MLS cannot have S suffix, therefore it is also option
