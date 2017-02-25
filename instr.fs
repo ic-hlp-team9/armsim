@@ -44,15 +44,16 @@ type ConditionCode =
 
 type Nibble = uint32 //placeholder
 
+
 type FLexOp =
-| Rot of Nibble*byte
+| Const of Nibble*byte
 | Shift of byte*RegisterName
 
 
-type ArithLogicInstr = {Cond: ConditionCode; Op: ArithLogicOp; S:bool; Rd: RegisterName; Rn: RegisterName; Op2: FLexOp}
-type MoveInstr = {Cond: ConditionCode; Op: MoveOp; S:bool; Rd: RegisterName; Op2: FLexOp}
-type TestInstr = {Cond: ConditionCode; Op: TestOp; S:bool; Rn: RegisterName; Op2: FLexOp}
-
+type ArithLogicInstr = {Cond: ConditionCode; Op: ArithLogicOp; S:bool option; Rd: RegisterName; Rn: RegisterName; Op2: FLexOp}
+type MoveInstr = {Cond: ConditionCode; Op: MoveOp; S:bool option; Rd: RegisterName; Op2: FLexOp}
+type TestInstr = {Cond: ConditionCode; Op: TestOp; Rn: RegisterName; Op2: FLexOp}
+type BranchInstr = {Cond: ConditionCode; L:bool; Address: byte*uint16} //Address type
 
 type ShiftOp =
 | ASR
@@ -67,7 +68,7 @@ type ImReg =
 
 type ShiftInstr = {Cond: ConditionCode; Op: ShiftOp; S:bool; Rd: RegisterName; Rn: RegisterName; Param: ImReg option} //Last parameter is option becase RRX only has 2 registers as parameters
 
-type MultOp = 
+type MultOp =
 | MUL
 | MLA
 | MLS
