@@ -1,4 +1,3 @@
-module Types
 open Microsoft.FSharp.Core.Operators.Checked
 
 type Register = int
@@ -144,6 +143,10 @@ type MachineRepresentation = {
 // val FrontEnd: string -> (MachineRepresentation Option * FrontendStatusItem list)
 
 
+#load "types.fsx"
+open Types
+open Microsoft.FSharp.Core.Operators.Checked
+
 
 let fetch machineState =
     let PC = machineState.Registers.[R15]
@@ -192,7 +195,7 @@ let execArithLogicInstr (arithLogicInstr:ArithLogicInstr) machineState =
       | true -> flagWrap machineState.CPSR (opMatch (arithLogicInstr.Op)) (machineState.Registers.[arithLogicInstr.Rn]) (secondOp arithLogicInstr.Op2 machineState)
 
     let res = opMatch (arithLogicInstr.Op) (machineState.Registers.[arithLogicInstr.Rn]) (secondOp arithLogicInstr.Op2 machineState)
-    {machineState with Registers = writeRegister arithLogicInstr.Rd machineState res}
+    {machineState with Registers = writeRegister arithLogicInstr.Rd machineState res; CPSR=flags}
 
 
 let execMoveInstr (movInstr:MoveInstr) machineState =
@@ -211,7 +214,7 @@ let decode (possiblyInstr:PossiblyDecodedWord) =
     | Instr instr ->
         match instr with
         | ArithLogicInstr instr -> fun () -> execArithLogicInstr instr
-        | MoveInstr _ -> failwithf "not implemented"
+        | MoveInstr instr -> fun () -> execMoveInstr instr
         | TestInstr _ -> failwithf "not implemented"
         | MultInstr _ -> failwithf "not implemented"
         | ShiftInstr _ -> failwithf "not implemented"
@@ -228,14 +231,13 @@ let pipeLine machineState =
   machineState
   |> fetch
   |> decode
-  |> execute machineState
+  |> execute {machineState with Registers= writeRegister R15 machineState (machineState.Registers.[R15] + 4)}
 
 
 let rec execWrapper machineState:MachineRepresentation =
   match true with
   | true -> machineState
   | false -> pipeLine machineState
-
 
 
 let myRegs =
@@ -257,11 +259,12 @@ let myRegs =
       R15, 0
       ]
    |> Map.ofList
-let myMachineState = { Memory= [ Instr (ArithLogicInstr  {Cond = Some EQ ; Op =  ADD ; S = false ; Rd =  R0; Rn = R1; Op2 = Const 5}) ] ;
+let myMachineState = { Memory= [ Instr (ArithLogicInstr  {Cond = Some EQ ; Op =  ADD ; S = false ; Rd =  R0; Rn = R1; Op2 = Const 5});
+                                 Instr (ArithLogicInstr  {Cond = Some EQ ; Op =  ADD ; S = false ; Rd =  R1; Rn = R0; Op2 = Const 10});
+                                 Instr (ArithLogicInstr  {Cond = Some EQ ; Op =  SUB ; S = false ; Rd =  R2; Rn = R1; Op2 = Shift (2y,R0) });
+                                 Instr (MoveInstr  {Cond = Some EQ ; Op =  MOV ; S = false ; Rd =  R3; Op2 = Shift (3y,R1)});
+                                 Instr (ArithLogicInstr  {Cond = Some EQ ; Op =  SUB ; S = true ; Rd =  R4; Rn = R0; Op2 = Const 5} )] ;
                        Registers = myRegs ;
                        CPSR = {N = false; Z = false; C = false; V = false }
                         }
-let res  = pipeLine myMachineState
-printfn "%A" res.Registers
-
-printfn "%A" 5
+let res  =  myMachineState |> pipeLine |> pipeLine |> pipeLine |> pipeLine
