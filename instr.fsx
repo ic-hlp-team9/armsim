@@ -69,7 +69,7 @@ let decode (possiblyInstr:PossiblyDecodedWord) =
     | Instr instr ->
         match instr with
         | ArithLogicInstr instr -> fun () -> execArithLogicInstr instr
-        | MoveInstr _ -> failwithf "not implemented"
+        | MoveInstr instr -> fun () -> execMoveInstr instr
         | TestInstr _ -> failwithf "not implemented"
         | MultInstr _ -> failwithf "not implemented"
         | ShiftInstr _ -> failwithf "not implemented"
@@ -86,7 +86,7 @@ let pipeLine machineState =
   machineState
   |> fetch
   |> decode
-  |> execute machineState
+  |> execute {machineState with Registers= writeRegister R15 machineState (machineState.Registers.[R15] + 4)}
 
 
 let rec execWrapper machineState:MachineRepresentation =
