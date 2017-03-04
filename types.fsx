@@ -4,10 +4,6 @@ type Register = uint32
 type Word = uint32
 
 
-type PossiblyDecodedWord =
- | Instr
- | Word
-
 type FrontendStatus =
     | Critical of string
     | Warning of string
@@ -28,11 +24,6 @@ type RegisterFile =  Map<RegisterName, Register>
 
 type CPSR = {N:bool; Z:bool; C: bool; V: bool}
 
-type MachineRepresentation = {
-    Memory: PossiblyDecodedWord list;
-    Registers: RegisterFile;
-    CPSR: CPSR;
-}
 
 type ArithLogicOp =
 | AND
@@ -138,5 +129,17 @@ type Instr =
  | PSRInstr of MRSInstr | MSRInstr
  | MemInstr
  | MiscInstr
+
+
+type PossiblyDecodedWord =
+ | Instr of Instr
+ | Word of Word
+
+type MachineRepresentation = {
+    Memory: PossiblyDecodedWord list;
+    Registers: RegisterFile;
+    CPSR: CPSR;
+}
+
 
 // val FrontEnd: string -> (MachineRepresentation Option * FrontendStatusItem list)
