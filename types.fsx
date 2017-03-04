@@ -1,7 +1,7 @@
 module Types
 
-type Register = uint32
-type Word = uint32
+type Register = int
+type Word = int
 
 
 type FrontendStatus =
@@ -104,14 +104,14 @@ type ImReg =
 | Register of RegisterName
 
 
-type FLexOp =
+type FlexOp =
 | Const of Imm8m
 | Shift of sbyte*RegisterName
 
 
-type ArithLogicInstr = {Cond: ConditionCode option; Op: ArithLogicOp; S:bool; Rd: RegisterName; Rn: RegisterName; Op2: FLexOp}
-type MoveInstr = {Cond: ConditionCode option; Op: MoveOp; S:bool; Rd: RegisterName; Op2: FLexOp}
-type TestInstr = {Cond: ConditionCode option; Op: TestOp; Rn: RegisterName; Op2: FLexOp}
+type ArithLogicInstr = {Cond: ConditionCode option; Op: ArithLogicOp; S:bool; Rd: RegisterName; Rn: RegisterName; Op2: FlexOp}
+type MoveInstr = {Cond: ConditionCode option; Op: MoveOp; S:bool; Rd: RegisterName; Op2: FlexOp}
+type TestInstr = {Cond: ConditionCode option; Op: TestOp; Rn: RegisterName; Op2: FlexOp}
 type BranchInstr = {Cond: ConditionCode option; L:bool; Address: byte*uint16} //Address type TBD, 24bit field originally
 type MRSInstr = {Cond: ConditionCode option; Rd:RegisterName; Psr:PSR}
 type MSRInstr = {Cond: ConditionCode option; Flags: APSRFlag list ;Param: ImReg}
@@ -140,6 +140,4 @@ type MachineRepresentation = {
     Registers: RegisterFile;
     CPSR: CPSR;
 }
-
-
 // val FrontEnd: string -> (MachineRepresentation Option * FrontendStatusItem list)
