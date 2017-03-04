@@ -1,9 +1,9 @@
+module Types
+
 type Register = uint32
 type Word     = uint32
 
-// Flex Op2
-
-type Instr = 
+type Instr =
  | ArithLogicInstr // Flex op2
  | MoveInstr // Flex op2
  | TestInstr // Flex op2
@@ -13,6 +13,8 @@ type Instr =
  | PSRInstr
  | MemInstr
  | MiscInstr
+
+type ArithLogicInstr = string*int*byte
 
 type PossiblyDecodedWord =
  | Instr
@@ -32,15 +34,16 @@ type FrontendStatusItem = {
     text: string;
 }
 
-type Registers =
- | r1
- | ...
+type RegisterName = R0 | R1 | R2 | R3 | R4 | R5| R6 | R7 | R8 | R9 | R10 | R11 | R12 | R13 | R14 | R15
 
-type RegisterFile = // Map <Registers, Register>
+type RegisterFile =  Map<RegisterName, Register>
+
+type CPSR = {N:bool; Z:bool; C: bool; V: bool}
 
 type MachineRepresentation = {
-    memory: PosisblyDecodedWord list;
+    memory: PossiblyDecodedWord list;
     registers: RegisterFile;
+    CPSR: CPSR;
 }
 
 // val FrontEnd: string -> (MachineRepresentation Option * FrontendStatusItem list)
