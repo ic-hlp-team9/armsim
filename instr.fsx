@@ -95,25 +95,9 @@ type ShiftInstr = {Cond: ConditionCode option; Op: ShiftOp; S:bool; Rd: Register
 type MultInstr = {Cond: ConditionCode option; Op: MultOp; S:bool; Rd: RegisterName; Rm: RegisterName; Rs: RegisterName; Rn: RegisterName option} //Mul only has 3 registers as parameters that's why last one is option; MLS cannot have S suffix, therefore it is also option
 
 
-let pipeLine machineState =
-    machineState
-    |> fetch
-    |> decode
-    |> execute
-
-let execute = fun x -> x()
-
-fun () -> executeArithLogicInstr Instr
-
-let rec execWrapper machineState =
-    match stopCondition with
-    | true -> machineState
-    | false -> execWrapper (execute machineState)
-
-
-let fetchInstr machineState =
-    let PC = machineState.registers[R15]
-    machineState.memory[PC]
+let fetch machineState:MachineRepresentation =
+    let Pc = machineState.Registers[R15]
+    machineState.Memory[PC]
 
 
 let secondOp flexOp =
@@ -143,8 +127,22 @@ let rec execArithLogicInstr arithLogicInstr machineState =
         | ORR -> (|||)
         | BIC -> (~~~)
 
-    let flags =
-        match arithLogicInstr.S with
-        | false -> machineState.flags
+        let flags =
+          match arithLogicInstr.S with
+          | false -> machineState.flags
+          | true -> generateFlags
 
     {machineState with arithLogicInstr.Rd=(opMatch ArithLogicOp)}
+
+let pipeLine machineState =
+  machineState
+  |> fetch
+  |> decode
+  |> execute
+
+let rec execWrapper machineState:MachineRepresentation =
+  match stopCondition with
+  | true -> machineState
+  | false -> execWrapper (pipeLine machineState)
+
+let execute = fun x -> x()
