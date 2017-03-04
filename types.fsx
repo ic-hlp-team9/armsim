@@ -28,10 +28,10 @@ type FrontendStatus =
     | Debug of string
 
 type FrontendStatusItem = {
-    state: FrontendStatus;
-    line: uint32 Option;
-    char: uint32 Option;
-    text: string;
+    State: FrontendStatus;
+    Line: uint32 Option;
+    Char: uint32 Option;
+    Text: string;
 }
 
 type RegisterName = R0 | R1 | R2 | R3 | R4 | R5| R6 | R7 | R8 | R9 | R10 | R11 | R12 | R13 | R14 | R15
@@ -41,8 +41,8 @@ type RegisterFile =  Map<RegisterName, Register>
 type CPSR = {N:bool; Z:bool; C: bool; V: bool}
 
 type MachineRepresentation = {
-    memory: PossiblyDecodedWord list;
-    registers: RegisterFile;
+    Memory: PossiblyDecodedWord list;
+    Registers: RegisterFile;
     CPSR: CPSR;
 }
 
