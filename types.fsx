@@ -1,7 +1,7 @@
 module Types
 
-type Register = uint32
-type Word     = uint32
+type Register = int
+type Word = uint32
 
 type Instr =
  | ArithLogicInstr // Flex op2

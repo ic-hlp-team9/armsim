@@ -95,9 +95,9 @@ type ShiftInstr = {Cond: ConditionCode option; Op: ShiftOp; S:bool; Rd: Register
 type MultInstr = {Cond: ConditionCode option; Op: MultOp; S:bool; Rd: RegisterName; Rm: RegisterName; Rs: RegisterName; Rn: RegisterName option} //Mul only has 3 registers as parameters that's why last one is option; MLS cannot have S suffix, therefore it is also option
 
 
-let fetch machineState:MachineRepresentation =
-    let Pc = machineState.Registers[R15]
-    machineState.Memory[PC]
+let fetch machineState =
+    let PC = machineState.Registers.[R15]
+    machineState.Memory.[PC/4]
 
 
 let secondOp flexOp =
@@ -127,10 +127,10 @@ let rec execArithLogicInstr arithLogicInstr machineState =
         | ORR -> (|||)
         | BIC -> (~~~)
 
-        let flags =
-          match arithLogicInstr.S with
-          | false -> machineState.flags
-          | true -> generateFlags
+    let flags =
+      match arithLogicInstr.S with
+      | false -> machineState.flags
+      | true -> generateFlags
 
     {machineState with arithLogicInstr.Rd=(opMatch ArithLogicOp)}
 
