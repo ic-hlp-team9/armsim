@@ -5,8 +5,8 @@ open Microsoft.FSharp.Core.Operators.Checked
 
 
 let fetch machineState =
-    let PC = machineState.Registers.[R15]
-    machineState.Memory.[uint32 (PC)/4u]
+    let PC = machineState.Registers.[R15] |> uint32
+    machineState.Memory.[PC]
 
 
 let secondOp flexOp machineState =
@@ -39,11 +39,21 @@ let flagWrap flags f x y =
   | _ -> res
 
 
-let getAddFlags carry x y =
-    let a, b = uint64 (uint32 x + (uint32 << boolToInt << carry)), uint64 (uint32 y)
-    let c, d = int64 x, int64 y
-    let ures = a + b + (uint64 << boolToInt << carry)
-    let sres = c + d + (int64 << boolToINt << carry)
+type ArithOperation = Addition | Subtraction
+type ShiftOperation = Left | Right
+
+
+let getAddFlags operation carry x y =
+    let a = uint64 (uint32 x)
+    let b = match operation with
+            | Subtraction -> uint64 (~~~(uint32 y)) + 1UL
+            | Addition -> uint64 (uint32 x)
+    let c = int64 x
+    let d = match operation with
+            | Subtraction -> - (int64 y)
+            | Addition -> int64 y
+    let ures = a + b + (carry |> uint64)
+    let sres = c + d + (carry |> int64)
     let carry = match ures >>> 32 with
                    | 1UL -> true
                    | _ -> false
@@ -68,9 +78,17 @@ let getFlags f x y =
    res, myFlags
 
 
-let getShiftFlags f x y =
+let getShiftFlags shiftDir f x y =
+  let carryCheck =
+    match shiftDir with
+    | Right -> 1
+    | Left -> -2147483648
+  let carryRes =
+    match x with
+    | 0 -> y
+    | _ -> f x (y-1)
+  let myFlags = {N=false; Z=false; C=(carryRes &&& carryCheck <> 0); V=false}
   let res = f x y
-  let myFlags = {N=false; Z=false; C=false; V=false}
   let resFlags = match res with
                  | 0 ->  {myFlags with Z=true}
                  | n when n < 0 -> {myFlags with N=true}
@@ -82,31 +100,36 @@ let execArithLogicInstr (arithLogicInstr:ArithLogicInstr) machineState =
         match aluOp with
         | AND -> (&&&), getFlags (&&&)
         | EOR -> (^^^), getFlags (^^^)
-        | SUB -> (-), fun x y -> (getAddFlags 0) x (-y)
-        | RSB -> (fun a b -> b - a), fun x y -> (getAddFlags 0) y (-x)
-        | ADD -> (+), getAddFlags 0
-        | ADC -> (fun a b -> (a + b + (machineState.CPSR.C |> boolToInt))), (getAddFlags machineState.CPSR.C)
-        | SBC -> (fun a b -> (a - b - 1 + (machineState.CPSR.C |> boolToInt))), fun x y -> (getAddFlags (machineState.CPSR.C) x (-y-1))
-        | RSC -> (fun a b -> (b - a - 1 + (machineState.CPSR.C |> boolToInt))), fun x y -> (getAddFlags (machineState.CPSR.C) y (-x-1))
+        | SUB -> (-),  getAddFlags Subtraction 0
+        | RSB -> (fun a b -> b - a), fun x y -> (getAddFlags Subtraction 0) y x
+        | ADD -> (+), getAddFlags Addition 0
+        | ADC -> (fun a b -> (a + b + (machineState.CPSR.C |> boolToInt))), (getAddFlags Addition (machineState.CPSR.C |> boolToInt))
+        | SBC -> (fun a b -> (a - b - 1 + (machineState.CPSR.C |> boolToInt))), getAddFlags Subtraction (machineState.CPSR.C |> boolToInt |> (-) 1)
+        | RSC -> (fun a b -> (b - a - 1 + (machineState.CPSR.C |> boolToInt))), fun x y -> (getAddFlags Subtraction (machineState.CPSR.C |> boolToInt |> (-) 1) y x)
         | ORR -> (|||), getFlags (|||)
         | BIC -> (fun x y -> ~~~x &&& y), getFlags (fun x y -> ~~~x &&& y)
     let arithLogicFun = (opMatch (arithLogicInstr.Op) |> fst)
     let flagFun = (opMatch (arithLogicInstr.Op) |> snd)
-    let Op1, Op2 = (machineState.Registers.[arithLogicInstr.Rn]), (secondOp arithLogicInstr.Op2 machineState)
+    let op1, op2 = (machineState.Registers.[arithLogicInstr.Rn]), (secondOp arithLogicInstr.Op2 machineState)
     let res, flags =
       match arithLogicInstr.S with
-      | false -> arithLogicFun Op1 Op2, machineState.CPSR
-      | true -> flagFun Op1 Op2
+      | false -> arithLogicFun op1 op2, machineState.CPSR
+      | true -> flagFun op1 op2
     {machineState with Registers = writeRegister arithLogicInstr.Rd machineState res; CPSR=flags}
 
 
 let execMoveInstr (movInstr:MoveInstr) machineState =
     let opMatch movOp =
       match movOp with
-      | MOV -> id
-      | MVN -> (~~~)
-    let secondOp = secondOp movInstr.Op2 machineState
-    let res = opMatch movInstr.Op (secondOp)
+      | MOV -> id, fun x -> (x, {N = (x < 0); Z = (x=0); C=false; V=false;})
+      | MVN -> (~~~), fun x -> (~~~x, {N = (~~~x < 0); Z = (~~~x=0); C=false; V=false;})
+    let movFun = (opMatch (movInstr.Op) |> fst)
+    let flagFun = (opMatch (movInstr.Op) |> snd)
+    let op = secondOp movInstr.Op2 machineState
+    let res, flags =
+      match movInstr.S with
+      | false -> movFun op, machineState.CPSR
+      | true -> flagFun op
     {machineState with Registers=writeRegister movInstr.Rd machineState res}
 
 
@@ -115,17 +138,36 @@ let execShiftInstr (shiftInstr:ShiftInstr) machineState =
         let longReg = int64 reg
         let rotated = longReg <<< (32 - shift%32)
         int (longReg >>> shift%32 ||| rotated)
-    let rorateRightX a b = machineState.CPSR.C |> boolToInt |> (<<<) 31 |> (|||) (a >>> 1)
+
+    let rorateRightX _ a = machineState.CPSR.C |> boolToInt |> (<<<) 31 |> (|||) (a >>> 1)
+    let logicalShiftLeft = fun a b -> int ((uint32 a) >>> b)
+
     let opMatch = function
-      | ASR -> (>>>)
-      | LSR -> fun a b -> int ((uint32 a) >>> b)
-      | ROR -> rotateRight
-      | LSL -> (<<<)
-      | RRX -> rorateRightX
-    let secondOp = secondOp shiftInstr.Op2 machineState
-    let firstOp = machineState.Registers.[shiftInstr.Rn]
-    let res = opMatch (shiftInstr.Op) (firstOp) (secondOp)
+      | ASR -> (>>>), getShiftFlags Right (>>>)
+      | LSR -> logicalShiftLeft, getShiftFlags Right logicalShiftLeft
+      | ROR -> rotateRight, getShiftFlags Right rotateRight
+      | LSL -> (<<<), getShiftFlags Left (<<<)
+      | RRX -> rorateRightX, getShiftFlags Right rorateRightX
+
+    let shiftFun = (opMatch (shiftInstr.Op) |> fst)
+    let flagFun = (opMatch (shiftInstr.Op) |> snd)
+    let Op1, Op2 = machineState.Registers.[shiftInstr.Rn], secondOp shiftInstr.Op2 machineState
+
+    let res, flags =
+      match shiftInstr.S with
+      | true -> shiftFun Op1 Op2, machineState.CPSR
+      | false -> flagFun Op1 Op2
     {machineState with Registers=writeRegister shiftInstr.Rd machineState res}
+
+
+let execBranchInstr (branchInstr:BranchInstr) machineState =
+  let dest = int branchInstr.Address
+  let jumpState = {machineState with Registers = writeRegister R15 machineState dest}
+  match branchInstr.L with
+  | false -> jumpState
+  | true ->
+    let link = machineState.Registers.[R15] + 4;
+    {jumpState with Registers = (writeRegister R14 machineState link)}
 
 
 let decode (possiblyInstr:PossiblyDecodedWord) =
@@ -138,7 +180,7 @@ let decode (possiblyInstr:PossiblyDecodedWord) =
         | TestInstr _ -> failwithf "not implemented"
         | MultInstr _ -> failwithf "not implemented"
         | ShiftInstr instr -> fun () -> execShiftInstr instr
-        | BranchInstr _ -> failwithf "not implemented"
+        | BranchInstr instr -> fun () -> execBranchInstr instr
         | PSRInstr _ -> failwithf "not implemented"
         | MemInstr _ -> failwithf "not implemented"
         | MiscInstr _ -> failwithf "not implemented"
