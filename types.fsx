@@ -96,6 +96,8 @@ type MultOp =
 | MLS
 | UMULL
 | UMLAL
+| SMULL
+| SMLAL
 
 type Nibble = byte //placeholder
 type Imm8m = int //placeholder, should be a number created by rotating an 8-bit value by an even number of bits within a 32-bit register
