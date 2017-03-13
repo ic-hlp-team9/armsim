@@ -6,7 +6,7 @@ open Microsoft.FSharp.Core.Operators.Checked
 
 let fetch machineState =
     let PC = machineState.Registers.[R15]
-    machineState.Memory.[int (PC)/4]
+    machineState.Memory.[uint32 (PC)/4u]
 
 let secondOp flexOp machineState =
   match flexOp with
@@ -100,9 +100,9 @@ let execMoveInstr (movInstr:MoveInstr) machineState =
 
 let execShiftInstr (shiftInstr:ShiftInstr) machineState =
     let rotateRight reg shift =
-      let longN = int64 n
-      let rotated = longN <<< 32 - shift%32
-      let res = (longN ||| rotated)
+      let longReg = int64 reg
+      let rotated = longReg <<< (32 - shift%32)
+      (longReg >>> shift%32 ||| rotated)
     let opMatch = function
       | ASR -> (>>>)
       | LSR -> fun a b -> int ((uint32 a) >>> b)
@@ -139,7 +139,7 @@ let pipeLine machineState =
   |> execute {machineState with Registers= writeRegister R15 machineState (machineState.Registers.[R15] + 4)}
 
 let rec execWrapper machineState:MachineRepresentation =
-  let stoppingCondition = (machineState.Registers.[R15]/4 = List.length (machineState.Memory))
+  let stoppingCondition = (machineState.Registers.[R15]/4 = List.length (Map.toList machineState.Memory))
   match stoppingCondition with
   | true -> machineState
   | false -> execWrapper (pipeLine machineState)
