@@ -2,6 +2,7 @@ module Types
 
 type Register = int
 type Word = int
+type Address = uint32
 
 
 type FrontendStatus =
@@ -136,7 +137,7 @@ type PossiblyDecodedWord =
  | Word of Word
 
 type MachineRepresentation = {
-    Memory: PossiblyDecodedWord list;
+    Memory: Map<Address, PossiblyDecodedWord>;
     Registers: RegisterFile;
     CPSR: CPSR;
 }
