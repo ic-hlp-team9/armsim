@@ -8,17 +8,21 @@ let fetch machineState =
     let PC = machineState.Registers.[R15]
     machineState.Memory.[uint32 (PC)/4u]
 
+
 let secondOp flexOp machineState =
   match flexOp with
   | Const n -> int n
   | Shift (b, Rn) -> machineState.Registers.[Rn] <<< int32 b
 
+
 let boolToInt = function
     | true -> 1
     | false -> 0
 
+
 let writeRegister rd machineState res =
   Map.add rd res machineState.Registers
+
 
 let flagWrap flags f x y =
   let res =
@@ -34,11 +38,12 @@ let flagWrap flags f x y =
   | n, f when n<0 -> n, {f with N = true}
   | _ -> res
 
+
 let getAddFlags carry x y =
-    let a, b = uint64 (uint32 x + (carry |> uint32)), uint64 (uint32 y)
+    let a, b = uint64 (uint32 x + (uint32 << boolToInt << carry)), uint64 (uint32 y)
     let c, d = int64 x, int64 y
-    let ures = a + b + uint64 carry
-    let sres = c + d + int64 carry
+    let ures = a + b + (uint64 << boolToInt << carry)
+    let sres = c + d + (int64 << boolToINt << carry)
     let carry = match ures >>> 32 with
                    | 1UL -> true
                    | _ -> false
@@ -52,6 +57,7 @@ let getAddFlags carry x y =
                    | _ -> false
     int sres, {N=neg; Z=zero; C=carry; V=overflow}
 
+
 let getFlags f x y =
    let res = f x y
    let myFlags = {N=false; Z=false; C=false; V=false}
@@ -62,6 +68,14 @@ let getFlags f x y =
    res, myFlags
 
 
+let getShiftFlags f x y =
+  let res = f x y
+  let myFlags = {N=false; Z=false; C=false; V=false}
+  let resFlags = match res with
+                 | 0 ->  {myFlags with Z=true}
+                 | n when n < 0 -> {myFlags with N=true}
+                 | _ ->  myFlags
+  res, myFlags
 
 let execArithLogicInstr (arithLogicInstr:ArithLogicInstr) machineState =
     let opMatch aluOp =
@@ -71,21 +85,18 @@ let execArithLogicInstr (arithLogicInstr:ArithLogicInstr) machineState =
         | SUB -> (-), fun x y -> (getAddFlags 0) x (-y)
         | RSB -> (fun a b -> b - a), fun x y -> (getAddFlags 0) y (-x)
         | ADD -> (+), getAddFlags 0
-        | ADC -> (fun a b -> (a + b + (machineState.CPSR.C |> boolToInt))), (getAddFlags (machineState.CPSR.C |> boolToInt))
-        | SBC -> (fun a b -> (a - b - 1 + (machineState.CPSR.C |> boolToInt))), fun x y -> (getAddFlags (machineState.CPSR.C |> boolToInt)) x (-y-1)
-        | RSC -> (fun a b -> (b - a - 1 + (machineState.CPSR.C |> boolToInt))), fun x y -> (getAddFlags (machineState.CPSR.C |> boolToInt)) y (-x-1)
+        | ADC -> (fun a b -> (a + b + (machineState.CPSR.C |> boolToInt))), (getAddFlags machineState.CPSR.C)
+        | SBC -> (fun a b -> (a - b - 1 + (machineState.CPSR.C |> boolToInt))), fun x y -> (getAddFlags (machineState.CPSR.C) x (-y-1))
+        | RSC -> (fun a b -> (b - a - 1 + (machineState.CPSR.C |> boolToInt))), fun x y -> (getAddFlags (machineState.CPSR.C) y (-x-1))
         | ORR -> (|||), getFlags (|||)
         | BIC -> (fun x y -> ~~~x &&& y), getFlags (fun x y -> ~~~x &&& y)
-
     let arithLogicFun = (opMatch (arithLogicInstr.Op) |> fst)
     let flagFun = (opMatch (arithLogicInstr.Op) |> snd)
     let Op1, Op2 = (machineState.Registers.[arithLogicInstr.Rn]), (secondOp arithLogicInstr.Op2 machineState)
-
     let res, flags =
       match arithLogicInstr.S with
       | false -> arithLogicFun Op1 Op2, machineState.CPSR
       | true -> flagFun Op1 Op2
-
     {machineState with Registers = writeRegister arithLogicInstr.Rd machineState res; CPSR=flags}
 
 
@@ -98,21 +109,24 @@ let execMoveInstr (movInstr:MoveInstr) machineState =
     let res = opMatch movInstr.Op (secondOp)
     {machineState with Registers=writeRegister movInstr.Rd machineState res}
 
+
 let execShiftInstr (shiftInstr:ShiftInstr) machineState =
     let rotateRight reg shift =
-      let longReg = int64 reg
-      let rotated = longReg <<< (32 - shift%32)
-      (longReg >>> shift%32 ||| rotated)
+        let longReg = int64 reg
+        let rotated = longReg <<< (32 - shift%32)
+        int (longReg >>> shift%32 ||| rotated)
+    let rorateRightX a b = machineState.CPSR.C |> boolToInt |> (<<<) 31 |> (|||) (a >>> 1)
     let opMatch = function
       | ASR -> (>>>)
       | LSR -> fun a b -> int ((uint32 a) >>> b)
-      | ROR -> (>>>)
+      | ROR -> rotateRight
       | LSL -> (<<<)
-      | RRX -> (>>>)
+      | RRX -> rorateRightX
     let secondOp = secondOp shiftInstr.Op2 machineState
     let firstOp = machineState.Registers.[shiftInstr.Rn]
     let res = opMatch (shiftInstr.Op) (firstOp) (secondOp)
     {machineState with Registers=writeRegister shiftInstr.Rd machineState res}
+
 
 let decode (possiblyInstr:PossiblyDecodedWord) =
     match possiblyInstr with
@@ -130,13 +144,16 @@ let decode (possiblyInstr:PossiblyDecodedWord) =
         | MiscInstr _ -> failwithf "not implemented"
         | _ -> failwithf "not implemented"
 
+
 let execute arg = fun x -> x() arg
+
 
 let pipeLine machineState =
   machineState
   |> fetch
   |> decode
   |> execute {machineState with Registers= writeRegister R15 machineState (machineState.Registers.[R15] + 4)}
+
 
 let rec execWrapper machineState:MachineRepresentation =
   let stoppingCondition = (machineState.Registers.[R15]/4 = List.length (Map.toList machineState.Memory))
