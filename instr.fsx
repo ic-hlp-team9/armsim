@@ -232,6 +232,64 @@ let execMultiMemInstr (memInstr:MultiMemInstr) (machineState:MachineRepresentati
   | true -> loadedState
   | false -> {loadedState with Registers = writeRegister memInstr.Pointer loadedState machineState.Registers.[memInstr.Pointer]}
 
+let writeRegisters (registers: RegisterFile) machineState =
+    let newMap = Map.fold (fun acc key value -> Map.add key value acc) machineState.Registers registers
+    newMap 
+
+let execMultInstr (multInstr:MultInstr) machineState =
+    let myFlags = {N=false; Z=false; C=false; V=false}
+
+
+    let umullFun rdHi (rm:Register) (rs:Register) rdLo  =
+        let res : uint64 =  (uint64 (uint32 rm)) * (uint64 (uint32 rs))
+        let rdHiVal  = int32 (res >>> 32)  
+        let rdLoVal  = int32 res
+        [rdLoVal ; rdHiVal] 
+
+    let umlalFun rdHi (rm:Register) (rs:Register) rdLo  =
+        let tmpRes : uint64 = (uint64 (uint32 rdLo )) ||| ( (uint64 (uint32 rdHi )) <<< 32 ) 
+        let res : uint64 = tmpRes +  (uint64 (uint32 rm)) * (uint64 (uint32 rs))
+        let rdHiVal  = int32 (res >>> 32)  
+        let rdLoVal  = int32 res
+        [rdLoVal ; rdHiVal]
+
+    let smullFun rdHi (rm : Register) (rs : Register) rdLo =
+        let res : int64 =  (int64  rm) * (int64  rs)
+        let rdHiVal  = int32 (res >>> 32)  
+        let rdLoVal  = int32 res
+        [rdLoVal ; rdHiVal]
+
+    let smlalFun rdHi (rm:Register) (rs:Register) rdLo  =
+        let tmpRes : int64 = (int64  rdLo ) ||| ( (int64  rdHi ) <<< 32 ) 
+        let res : int64 = tmpRes +  (int64 rm) * (int64  rs)
+        let rdHiVal  = int32 (res >>> 32)  
+        let rdLoVal  = int32 res
+        [rdLoVal ; rdHiVal]
+
+    let opMatch multOp =
+        match multOp with
+        | MUL -> (fun a b _ _ -> [a * b]) , [multInstr.Rd] 
+        | MLA -> (fun a b c _ -> [c + a*b]) , [multInstr.Rd]
+        | MLS -> (fun a b c _ -> [c - a*b]) , [ multInstr.Rd]
+        | UMULL -> (umullFun) , [multInstr.Rd ; multInstr.Rm]
+        | UMLAL -> (umlalFun) , [multInstr.Rd ; multInstr.Rm]
+        | SMULL -> (smullFun) , [multInstr.Rd ; multInstr.Rm]
+        | SMLAL -> (smlalFun) , [multInstr.Rd ; multInstr.Rm]
+    
+    let multInstrFun = (opMatch multInstr.Op)
+    let rd = machineState.Registers.[multInstr.Rd]
+    let rm = machineState.Registers.[multInstr.Rm]
+    let rs =  machineState.Registers.[multInstr.Rs]
+    let rn = match multInstr.Rn with
+             | Some registerName ->  machineState.Registers.[registerName]
+             | None -> 0
+    
+    let resValue = fst (opMatch multInstr.Op) rm rs rn rd
+    let resReg = snd (opMatch multInstr.Op)
+    let registers =  List.zip resReg resValue |> Map.ofList 
+    {machineState with Registers = writeRegisters registers machineState }                      
+
+
 let decode (possiblyInstr:PossiblyDecodedWord) =
     match possiblyInstr with
     | Word _ -> failwithf "Word decoded"
@@ -240,7 +298,7 @@ let decode (possiblyInstr:PossiblyDecodedWord) =
         | ArithLogicInstr instr -> fun () -> execArithLogicInstr instr
         | MoveInstr instr -> fun () -> execMoveInstr instr
         | TestInstr instr -> fun () -> execTestInstr instr
-        | MultInstr _ -> failwithf "not implemented"
+        | MultInstr instr -> fun () -> execMultInstr instr
         | ShiftInstr instr -> fun () -> execShiftInstr instr
         | BranchInstr instr -> fun () -> execBranchInstr instr
         | MemInstr instr -> match instr with
