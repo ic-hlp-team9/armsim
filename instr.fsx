@@ -24,6 +24,13 @@ let writeRegister rd machineState res =
   Map.add rd res machineState.Registers
 
 
+let getMemWord (byteAddressing:bool) (address:Address) (machineState:MachineRepresentation) =
+  let memContent= match byteAddressing with
+                   | false when address%4u <> 0u -> failwithf "Unaligned memory access"
+                   | false -> machineState.Memory.[address]
+                   | true -> let byteOffset = address%4u; machineState.Memory.[address-byteOffset] |> (<<<) (3u-byteOffset) |> (>>>) 3u
+  match memContent with
+
 let flagWrap flags f x y =
   let res =
     try
@@ -95,9 +102,9 @@ let getShiftFlags shiftDir f x y =
                  | _ ->  myFlags
   res, myFlags
 
-let execArithLogicInstr (arithLogicInstr:ArithLogicInstr) machineState =
-    let opMatch aluOp =
-        match aluOp with
+
+let execArithLogicInstr (arithLogicInstr:ArithLogicInstr) (machineState:MachineRepresentation) =
+    let opMatch  = function
         | AND -> (&&&), getFlags (&&&)
         | EOR -> (^^^), getFlags (^^^)
         | SUB -> (-),  getAddFlags Subtraction 0
@@ -118,9 +125,19 @@ let execArithLogicInstr (arithLogicInstr:ArithLogicInstr) machineState =
     {machineState with Registers = writeRegister arithLogicInstr.Rd machineState res; CPSR=flags}
 
 
-let execMoveInstr (movInstr:MoveInstr) machineState =
-    let opMatch movOp =
-      match movOp with
+let execTestInstr (testInstr:TestInstr) (machineState:MachineRepresentation) =
+  let opMatch = function
+    | TST -> getFlags (&&&)
+    | TEQ -> getFlags (^^^)
+    | CMP -> getAddFlags Subtraction 0
+    | CMN -> getAddFlags Addition 0
+  let op1, op2 = (machineState.Registers.[testInstr.Rn]), (secondOp testInstr.Op2 machineState)
+  let flags = (testInstr.Op |> opMatch) op1 op2 |> snd
+  {machineState with CPSR=flags}
+
+
+let execMoveInstr (movInstr:MoveInstr) (machineState:MachineRepresentation) =
+    let opMatch = function
       | MOV -> id, fun x -> (x, {N = (x < 0); Z = (x=0); C=false; V=false;})
       | MVN -> (~~~), fun x -> (~~~x, {N = (~~~x < 0); Z = (~~~x=0); C=false; V=false;})
     let movFun = (opMatch (movInstr.Op) |> fst)
@@ -133,7 +150,7 @@ let execMoveInstr (movInstr:MoveInstr) machineState =
     {machineState with Registers=writeRegister movInstr.Rd machineState res}
 
 
-let execShiftInstr (shiftInstr:ShiftInstr) machineState =
+let execShiftInstr (shiftInstr:ShiftInstr) (machineState:MachineRepresentation) =
     let rotateRight reg shift =
         let longReg = int64 reg
         let rotated = longReg <<< (32 - shift%32)
@@ -151,16 +168,16 @@ let execShiftInstr (shiftInstr:ShiftInstr) machineState =
 
     let shiftFun = (opMatch (shiftInstr.Op) |> fst)
     let flagFun = (opMatch (shiftInstr.Op) |> snd)
-    let Op1, Op2 = machineState.Registers.[shiftInstr.Rn], secondOp shiftInstr.Op2 machineState
+    let op1, op2 = machineState.Registers.[shiftInstr.Rn], secondOp shiftInstr.Op2 machineState
 
     let res, flags =
       match shiftInstr.S with
-      | true -> shiftFun Op1 Op2, machineState.CPSR
-      | false -> flagFun Op1 Op2
+      | true -> shiftFun op1 op2, machineState.CPSR
+      | false -> flagFun op1 op2
     {machineState with Registers=writeRegister shiftInstr.Rd machineState res}
 
 
-let execBranchInstr (branchInstr:BranchInstr) machineState =
+let execBranchInstr (branchInstr:BranchInstr) (machineState:MachineRepresentation) =
   let dest = int branchInstr.Address
   let jumpState = {machineState with Registers = writeRegister R15 machineState dest}
   match branchInstr.L with
@@ -170,6 +187,15 @@ let execBranchInstr (branchInstr:BranchInstr) machineState =
     {jumpState with Registers = (writeRegister R14 machineState link)}
 
 
+let execSingleMemString (memInstr:SingleMemInstr) (machineState:MachineRepresentation) =
+  let offset = secondOp memInstr.Offset
+  let loadPointer, resPointer =
+    match memInstr.Addressing, machineState.Registers.[memInstr.Pointer] with
+    | Pre, adr -> adr, adr+offset
+    | Post, adr -> adr+offset, adr+offset
+  match memInstr.
+
+
 let decode (possiblyInstr:PossiblyDecodedWord) =
     match possiblyInstr with
     | Word _ -> failwithf "Word decoded"
@@ -177,7 +203,7 @@ let decode (possiblyInstr:PossiblyDecodedWord) =
         match instr with
         | ArithLogicInstr instr -> fun () -> execArithLogicInstr instr
         | MoveInstr instr -> fun () -> execMoveInstr instr
-        | TestInstr _ -> failwithf "not implemented"
+        | TestInstr instr -> fun () -> execTestInstr instr
         | MultInstr _ -> failwithf "not implemented"
         | ShiftInstr instr -> fun () -> execShiftInstr instr
         | BranchInstr instr -> fun () -> execBranchInstr instr
