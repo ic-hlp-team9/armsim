@@ -107,6 +107,11 @@ type MultMemOp =
 | LDM
 | STM
 
+type Dir =
+| IA
+| IB
+| DA
+| DB
 
 type Nibble = byte //placeholder
 type Imm8m = int //placeholder, should be a number created by rotating an 8-bit value by an even number of bits within a 32-bit register
@@ -130,6 +135,7 @@ type MSRInstr = {Cond: ConditionCode option; Flags: APSRFlag list ;Param: ImReg}
 type ShiftInstr = {Cond: ConditionCode option; Op: ShiftOp; S:bool; Rd: RegisterName; Rn: RegisterName; Op2: FlexOp} //Last parameter is option becase RRX only has 2 registers as parameters
 type MultInstr = {Cond: ConditionCode option; Op: MultOp; S:bool; Rd: RegisterName; Rm: RegisterName; Rs: RegisterName; Rn: RegisterName option} //Mul only has 3 registers as parameters that's why last one is option; MLS cannot have S suffix, therefore it is also option
 type SingleMemInstr = {Cond: ConditionCode option; Op: SingleMemOp; Addressing: AddressingType; ByteAddressing: bool; Pointer: RegisterName; Rd: RegisterName; Offset: FlexOp}
+type MultiMemInstr = {Cond: ConditionCode option; Op: MultMemOp; Dir: Dir; Pointer: RegisterName; Rlist: RegisterName list}
 type MemInstr =
 | SingleMemInstr of SingleMemInstr
 | MultipleMemInst of int

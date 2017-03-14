@@ -23,6 +23,9 @@ let boolToInt = function
 let writeRegister rd machineState res =
   Map.add rd res machineState.Registers
 
+let incrementRegister rd machineState inc =
+  {machineState with Registers=Map.add rd (machineState.Registers.[rd]+inc) machineState.Registers}
+
 
 let getMemWord (byteAddressing:bool) (address:Address) (machineState:MachineRepresentation) =
   match byteAddressing with
@@ -163,7 +166,7 @@ let execMoveInstr (movInstr:MoveInstr) (machineState:MachineRepresentation) =
       match movInstr.S with
       | false -> movFun op, machineState.CPSR
       | true -> flagFun op
-    {machineState with Registers=writeRegister movInstr.Rd machineState res}
+    {machineState with Registers=writeRegister movInstr.Rd machineState res; CPSR = flags}
 
 
 let execShiftInstr (shiftInstr:ShiftInstr) (machineState:MachineRepresentation) =
@@ -173,11 +176,11 @@ let execShiftInstr (shiftInstr:ShiftInstr) (machineState:MachineRepresentation) 
         int (longReg >>> shift%32 ||| rotated)
 
     let rorateRightX _ a = machineState.CPSR.C |> boolToInt |> fun x -> x <<< 31 |> (|||) (a >>> 1)
-    let logicalShiftLeft = fun a b -> int ((uint32 a) >>> b)
+    let logicalShiftRight = fun a b -> int ((uint32 a) >>> b)
 
     let opMatch = function
       | ASR -> (>>>), getShiftFlags Right (>>>)
-      | LSR -> logicalShiftLeft, getShiftFlags Right logicalShiftLeft
+      | LSR -> logicalShiftRight, getShiftFlags Right logicalShiftRight
       | ROR -> rotateRight, getShiftFlags Right rotateRight
       | LSL -> (<<<), getShiftFlags Left (<<<)
       | RRX -> rorateRightX, getShiftFlags Right rorateRightX
@@ -190,7 +193,7 @@ let execShiftInstr (shiftInstr:ShiftInstr) (machineState:MachineRepresentation) 
       match shiftInstr.S with
       | true -> shiftFun op1 op2, machineState.CPSR
       | false -> flagFun op1 op2
-    {machineState with Registers=writeRegister shiftInstr.Rd machineState res}
+    {machineState with Registers=writeRegister shiftInstr.Rd machineState res; CPSR=flags}
 
 
 let execBranchInstr (branchInstr:BranchInstr) (machineState:MachineRepresentation) =
@@ -203,18 +206,35 @@ let execBranchInstr (branchInstr:BranchInstr) (machineState:MachineRepresentatio
     {jumpState with Registers = (writeRegister R14 machineState link)}
 
 
-let execSingleMemString (memInstr:SingleMemInstr) (machineState:MachineRepresentation) =
+let execSingleMemInstr (memInstr:SingleMemInstr) (machineState:MachineRepresentation) =
   let offset = secondOp memInstr.Offset machineState
   let loadPointer, resPointer =
     match memInstr.Addressing, machineState.Registers.[memInstr.Pointer] with
     | Pre, adr -> adr, adr+offset
     | Post, adr -> adr+offset, adr+offset
-  match memInstr.Op with
-  | LDR -> let memData = getMemWord memInstr.ByteAddressing loadPointer machineState;
-           let writeMap =
-           {machineState with writeRegisters}
-  | STR ->
+  let writtenMem =
+    match memInstr.Op with
+    | LDR -> let memData = getMemWord memInstr.ByteAddressing (uint32 loadPointer) machineState;
+             {machineState with Registers = (writeRegister memInstr.Rd machineState memData)}
+    | STR -> let memData = machineState.Registers.[memInstr.Rd]
+             storeMemWord memInstr.ByteAddressing (uint32 loadPointer) memData machineState
+  {writtenMem with Registers = writeRegister memInstr.Pointer machineState resPointer}
 
+
+let execMultMemInstr (memInstr:MultiMemInstr) (machineState:MachineRepresentation) =
+  let offset, initPointer =
+    match memInstr.Dir with
+    | IA -> 4, machineState.Registers.[memInstr.Pointer]
+    | IB -> 4, machineState.Registers.[memInstr.Pointer] +4
+    | DA -> -4, machineState.Registers.[memInstr.Pointer]
+    | DB -> -4, machineState.Registers.[memInstr.Pointer] -4
+  let incrementer = incrementRegister memInstr.Pointer machineState offset
+  let memFun =
+    match memInstr.Op with
+    | LDM ->
+    | STM -> fun ms, pt-> (storeMemWord false machine pt
+
+  List.fold folder machineState memInstr.Rlist
 
 let decode (possiblyInstr:PossiblyDecodedWord) =
     match possiblyInstr with
@@ -227,7 +247,6 @@ let decode (possiblyInstr:PossiblyDecodedWord) =
         | MultInstr _ -> failwithf "not implemented"
         | ShiftInstr instr -> fun () -> execShiftInstr instr
         | BranchInstr instr -> fun () -> execBranchInstr instr
-        | PSRInstr _ -> failwithf "not implemented"
         | MemInstr _ -> failwithf "not implemented"
         | MiscInstr _ -> failwithf "not implemented"
         | _ -> failwithf "not implemented"
