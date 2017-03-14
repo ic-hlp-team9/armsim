@@ -135,10 +135,10 @@ type MSRInstr = {Cond: ConditionCode option; Flags: APSRFlag list ;Param: ImReg}
 type ShiftInstr = {Cond: ConditionCode option; Op: ShiftOp; S:bool; Rd: RegisterName; Rn: RegisterName; Op2: FlexOp} //Last parameter is option becase RRX only has 2 registers as parameters
 type MultInstr = {Cond: ConditionCode option; Op: MultOp; S:bool; Rd: RegisterName; Rm: RegisterName; Rs: RegisterName; Rn: RegisterName option} //Mul only has 3 registers as parameters that's why last one is option; MLS cannot have S suffix, therefore it is also option
 type SingleMemInstr = {Cond: ConditionCode option; Op: SingleMemOp; Addressing: AddressingType; ByteAddressing: bool; Pointer: RegisterName; Rd: RegisterName; Offset: FlexOp}
-type MultiMemInstr = {Cond: ConditionCode option; Op: MultMemOp; Dir: Dir; Pointer: RegisterName; Rlist: RegisterName list}
+type MultiMemInstr = {Cond: ConditionCode option; Op: MultMemOp; Dir: Dir; Pointer: RegisterName; Rlist: RegisterName list; WriteBack: bool}
 type MemInstr =
 | SingleMemInstr of SingleMemInstr
-| MultipleMemInst of int
+| MultiMemInstr of MultiMemInstr
 
 type Instr =
  | ArithLogicInstr of ArithLogicInstr// Flex op2
@@ -148,8 +148,7 @@ type Instr =
  | ShiftInstr of ShiftInstr
  | BranchInstr of BranchInstr
  | PSRInstr of MRSInstr | MSRInstr
- | MemInstr
- | MiscInstr
+ | MemInstr of MemInstr
 
 
 type PossiblyDecodedWord =

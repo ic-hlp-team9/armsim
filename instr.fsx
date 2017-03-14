@@ -1,8 +1,6 @@
 module Instruction
 #load "types.fsx"
 open Types
-open Microsoft.FSharp.Core.Operators.Checked
-
 
 let fetch machineState =
     let PC = machineState.Registers.[R15] |> uint32
@@ -221,20 +219,22 @@ let execSingleMemInstr (memInstr:SingleMemInstr) (machineState:MachineRepresenta
   {writtenMem with Registers = writeRegister memInstr.Pointer machineState resPointer}
 
 
-let execMultMemInstr (memInstr:MultiMemInstr) (machineState:MachineRepresentation) =
+let execMultiMemInstr (memInstr:MultiMemInstr) (machineState:MachineRepresentation) =
   let offset, initPointer =
     match memInstr.Dir with
     | IA -> 4, machineState.Registers.[memInstr.Pointer]
-    | IB -> 4, machineState.Registers.[memInstr.Pointer] +4
+    | IB -> 4, machineState.Registers.[memInstr.Pointer] + 4
     | DA -> -4, machineState.Registers.[memInstr.Pointer]
-    | DB -> -4, machineState.Registers.[memInstr.Pointer] -4
+    | DB -> -4, machineState.Registers.[memInstr.Pointer] - 4
   let incrementer = incrementRegister memInstr.Pointer machineState offset
   let memFun =
     match memInstr.Op with
-    | LDM ->
-    | STM -> fun ms, pt-> (storeMemWord false machine pt
-
-  List.fold folder machineState memInstr.Rlist
+    | LDM -> fun (ms, pt) reg -> ({ms with Registers = (writeRegister reg machineState (getMemWord false pt ms))}, uint32 (int pt + offset))
+    | STM -> fun (ms, pt) reg -> ((storeMemWord false pt ms.Registers.[reg] ms), uint32 (int pt + offset))
+  let loadedState = List.fold memFun (machineState, uint32 initPointer) memInstr.Rlist |> fst
+  match memInstr.WriteBack with
+  | true -> loadedState
+  | false -> {loadedState with Registers = writeRegister memInstr.Pointer loadedState machineState.Registers.[memInstr.Pointer]}
 
 let decode (possiblyInstr:PossiblyDecodedWord) =
     match possiblyInstr with
@@ -247,8 +247,9 @@ let decode (possiblyInstr:PossiblyDecodedWord) =
         | MultInstr _ -> failwithf "not implemented"
         | ShiftInstr instr -> fun () -> execShiftInstr instr
         | BranchInstr instr -> fun () -> execBranchInstr instr
-        | MemInstr _ -> failwithf "not implemented"
-        | MiscInstr _ -> failwithf "not implemented"
+        | MemInstr instr -> match instr with
+                            | SingleMemInstr instr -> fun () -> execSingleMemInstr instr
+                            | MultiMemInstr instr -> fun () -> execMultiMemInstr instr
         | _ -> failwithf "not implemented"
 
 
