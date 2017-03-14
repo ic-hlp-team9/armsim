@@ -25,11 +25,27 @@ let writeRegister rd machineState res =
 
 
 let getMemWord (byteAddressing:bool) (address:Address) (machineState:MachineRepresentation) =
-  let memContent= match byteAddressing with
-                   | false when address%4u <> 0u -> failwithf "Unaligned memory access"
-                   | false -> machineState.Memory.[address]
-                   | true -> let byteOffset = address%4u; machineState.Memory.[address-byteOffset] |> (<<<) (3u-byteOffset) |> (>>>) 3u
-  match memContent with
+  match byteAddressing with
+  | false when address%4u <> 0u -> failwithf "Unaligned memory access"
+  | false -> match machineState.Memory.[address] with
+             | Word w -> w
+             | Instr intr -> failwithf "Data access attempt within instruction space"
+  | true  -> match machineState.Memory.[address-address%4u], int (address%4u) with
+             | Word w, offset -> w |> (<<<)  (24-8*offset) |> (>>>) 24
+             | Instr instr, _ -> failwithf "Data access attempt within instruction space"
+
+
+let storeMemWord (byteAddressing:bool) (address:Address) (word:Word) (machineState:MachineRepresentation) =
+ match byteAddressing with
+ | false when address%4u <> 0u -> failwithf "Unaligned memory access"
+ | false -> match machineState.Memory.[address] with
+            | Word oldContent -> {machineState with Memory = Map.add address (Word word) machineState.Memory}
+            | Instr intr -> failwithf "Data access attempt within instruction space"
+ | true  -> match machineState.Memory.[address-address%4u], int (address%4u) with
+            | Word w, offset -> let newWord = 0xFF |> (<<<)  (8*offset) |> (~~~) |> (&&&) w |> (|||) (word &&& 0xff <<< 8*offset)
+                                {machineState with Memory = Map.add address (Word newWord) machineState.Memory}
+            | Instr instr, _ -> failwithf "Data access attempt within instruction space"
+
 
 let flagWrap flags f x y =
   let res =
@@ -82,7 +98,7 @@ let getFlags f x y =
                   | 0 ->  {myFlags with Z=true}
                   | n when n < 0 -> {myFlags with N=true}
                   | _ ->  myFlags
-   res, myFlags
+   res, resFlags
 
 
 let getShiftFlags shiftDir f x y =
@@ -100,7 +116,7 @@ let getShiftFlags shiftDir f x y =
                  | 0 ->  {myFlags with Z=true}
                  | n when n < 0 -> {myFlags with N=true}
                  | _ ->  myFlags
-  res, myFlags
+  res, resFlags
 
 
 let execArithLogicInstr (arithLogicInstr:ArithLogicInstr) (machineState:MachineRepresentation) =
@@ -156,7 +172,7 @@ let execShiftInstr (shiftInstr:ShiftInstr) (machineState:MachineRepresentation) 
         let rotated = longReg <<< (32 - shift%32)
         int (longReg >>> shift%32 ||| rotated)
 
-    let rorateRightX _ a = machineState.CPSR.C |> boolToInt |> (<<<) 31 |> (|||) (a >>> 1)
+    let rorateRightX _ a = machineState.CPSR.C |> boolToInt |> fun x -> x <<< 31 |> (|||) (a >>> 1)
     let logicalShiftLeft = fun a b -> int ((uint32 a) >>> b)
 
     let opMatch = function
@@ -188,12 +204,16 @@ let execBranchInstr (branchInstr:BranchInstr) (machineState:MachineRepresentatio
 
 
 let execSingleMemString (memInstr:SingleMemInstr) (machineState:MachineRepresentation) =
-  let offset = secondOp memInstr.Offset
+  let offset = secondOp memInstr.Offset machineState
   let loadPointer, resPointer =
     match memInstr.Addressing, machineState.Registers.[memInstr.Pointer] with
     | Pre, adr -> adr, adr+offset
     | Post, adr -> adr+offset, adr+offset
-  match memInstr.
+  match memInstr.Op with
+  | LDR -> let memData = getMemWord memInstr.ByteAddressing loadPointer machineState;
+           let writeMap =
+           {machineState with writeRegisters}
+  | STR ->
 
 
 let decode (possiblyInstr:PossiblyDecodedWord) =
