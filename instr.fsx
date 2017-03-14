@@ -21,9 +21,6 @@ let boolToInt = function
 let writeRegister rd machineState res =
   Map.add rd res machineState.Registers
 
-let incrementRegister rd machineState inc =
-  {machineState with Registers=Map.add rd (machineState.Registers.[rd]+inc) machineState.Registers}
-
 
 let getMemWord (byteAddressing:bool) (address:Address) (machineState:MachineRepresentation) =
   match byteAddressing with
@@ -226,7 +223,6 @@ let execMultiMemInstr (memInstr:MultiMemInstr) (machineState:MachineRepresentati
     | IB -> 4, machineState.Registers.[memInstr.Pointer] + 4
     | DA -> -4, machineState.Registers.[memInstr.Pointer]
     | DB -> -4, machineState.Registers.[memInstr.Pointer] - 4
-  let incrementer = incrementRegister memInstr.Pointer machineState offset
   let memFun =
     match memInstr.Op with
     | LDM -> fun (ms, pt) reg -> ({ms with Registers = (writeRegister reg machineState (getMemWord false pt ms))}, uint32 (int pt + offset))
