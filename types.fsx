@@ -123,7 +123,7 @@ type ImReg =
 
 type FlexOp =
 | Const of Imm8m
-| Shift of sbyte*RegisterName
+| Shift of ShiftOp*sbyte*RegisterName
 
 
 type ArithLogicInstr = {Cond: ConditionCode option; Op: ArithLogicOp; S:bool; Rd: RegisterName; Rn: RegisterName; Op2: FlexOp}
@@ -132,7 +132,7 @@ type TestInstr = {Cond: ConditionCode option; Op: TestOp; Rn: RegisterName; Op2:
 type BranchInstr = {Cond: ConditionCode option; L:bool; Address: Address} //Address type TBD, 24bit field originally
 type MRSInstr = {Cond: ConditionCode option; Rd:RegisterName; Psr:PSR}
 type MSRInstr = {Cond: ConditionCode option; Flags: APSRFlag list ;Param: ImReg}
-type ShiftInstr = {Cond: ConditionCode option; Op: ShiftOp; S:bool; Rd: RegisterName; Rn: RegisterName; Op2: FlexOp} //Last parameter is option becase RRX only has 2 registers as parameters
+type ShiftInstr = {Cond: ConditionCode option; Op: ShiftOp; S:bool; Rd: RegisterName; Rn: RegisterName; Op2: ImReg} //Last parameter is option becase RRX only has 2 registers as parameters
 type MultInstr = {Cond: ConditionCode option; Op: MultOp; S:bool; Rd: RegisterName; Rm: RegisterName; Rs: RegisterName; Rn: RegisterName option} //Mul only has 3 registers as parameters that's why last one is option; MLS cannot have S suffix, therefore it is also option
 type SingleMemInstr = {Cond: ConditionCode option; Op: SingleMemOp; Addressing: AddressingType; ByteAddressing: bool; Pointer: RegisterName; Rd: RegisterName; Offset: FlexOp}
 type MultiMemInstr = {Cond: ConditionCode option; Op: MultMemOp; Dir: Dir; Pointer: RegisterName; Rlist: RegisterName list; WriteBack: bool}
