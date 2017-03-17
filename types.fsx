@@ -140,6 +140,9 @@ type MemInstr =
 | SingleMemInstr of SingleMemInstr
 | MultiMemInstr of MultiMemInstr
 
+type ArithOperation = Addition | Subtraction
+type ShiftOperation = Left | Right
+
 type InstrType =
  | ArithLogicInstr of ArithLogicInstr// Flex op2
  | MoveInstr of MoveInstr // Flex op2

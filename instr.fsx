@@ -15,9 +15,6 @@ let boolToInt = function
 let writeRegister (rd:RegisterName) (machineState:MachineRepresentation) (res:int):RegisterFile =
   Map.add rd res machineState.Registers
 
-type ArithOperation = Addition | Subtraction
-type ShiftOperation = Left | Right
-
 
 let barrelShift (op:ShiftOp) (data:Register) (shift:int) (machineState:MachineRepresentation) =
   let getCarry shiftDir f x y =
