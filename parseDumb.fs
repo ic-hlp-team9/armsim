@@ -579,7 +579,8 @@ let doAssembler (iList: (ParsedInstr * string option) list):MachineRepresentatio
         | (PI (DataI x), None) -> failwithf "Invalid syntax, put label in frot of DCD/B"
         | (PI (Fill x), Some str) -> progMap <- progMap.Add(str, pointer); addEmpty machState pointer x.Num 
         | (PI (Fill x), None) -> addEmpty machState pointer x.Num
-        | _ -> failwithf "Unimplemented pseudo operand"
+        | (I x, _) -> (machState, pointer)
+       // | _ -> failwithf "Unimplemented pseudo operand"
  
     
     let assembleBranch (cnd,(preBr:PreAssembleBI)):Instr =
@@ -633,7 +634,7 @@ FILL 16
 programASM
 |> tokenise
 |> createInstList
-//|> doAssembler
+|> doAssembler
 
 //|> List.
 
