@@ -1,9 +1,7 @@
-open System.Collections.Generic
-
 type Register = int
 type Word = int
 type Address = uint32
-
+type AddressingType = Pre | Post
 
 type FrontendStatus =
     | Critical of string
@@ -11,7 +9,6 @@ type FrontendStatus =
     | Notice of string
     | Info of string
     | Debug of string
-
 
 type FrontendStatusItem = {
     State: FrontendStatus;
@@ -100,6 +97,20 @@ type MultOp =
 | SMULL
 | SMLAL
 
+type SingleMemOp =
+| LDR
+| STR
+
+type MultMemOp =
+| LDM
+| STM
+
+type Dir =
+| IA
+| IB
+| DA
+| DB
+
 type Nibble = byte //placeholder
 type Imm8m = int //placeholder, should be a number created by rotating an 8-bit value by an even number of bits within a 32-bit register
 
@@ -110,30 +121,36 @@ type ImReg =
 
 type FlexOp =
 | Const of Imm8m
-| Shift of sbyte*RegisterName
+| Shift of ShiftOp*ImReg*RegisterName
 
 
-type ArithLogicInstr = {Cond: ConditionCode option; Op: ArithLogicOp; S:bool; Rd: RegisterName; Rn: RegisterName; Op2: FlexOp}
-type MoveInstr = {Cond: ConditionCode option; Op: MoveOp; S:bool; Rd: RegisterName; Op2: FlexOp}
-type TestInstr = {Cond: ConditionCode option; Op: TestOp; Rn: RegisterName; Op2: FlexOp}
-type BranchInstr = {Cond: ConditionCode option; L:bool; Address: byte*uint16} //Address type TBD, 24bit field originally
-type MRSInstr = {Cond: ConditionCode option; Rd:RegisterName; Psr:PSR}
-type MSRInstr = {Cond: ConditionCode option; Flags: APSRFlag list ;Param: ImReg}
-type ShiftInstr = {Cond: ConditionCode option; Op: ShiftOp; S:bool; Rd: RegisterName; Rn: RegisterName; Op2: FlexOp} //Last parameter is option becase RRX only has 2 registers as parameters
-type MultInstr = {Cond: ConditionCode option; Op: MultOp; S:bool; Rd: RegisterName; Rm: RegisterName; Rs: RegisterName; Rn: RegisterName option} //Mul only has 3 registers as parameters that's why last one is option; MLS cannot have S suffix, therefore it is also option
+type ArithLogicInstr = {Op: ArithLogicOp; S:bool; Rd: RegisterName; Rn: RegisterName; Op2: FlexOp}
+type MoveInstr = {Op: MoveOp; S:bool; Rd: RegisterName; Op2: FlexOp}
+type TestInstr = {Op: TestOp; Rn: RegisterName; Op2: FlexOp}
+type BranchInstr = {L:bool; Address: Address} //Address type TBD, 24bit field originally
+type PreAssembleBI = {L:bool; Dest: string}
+type ShiftInstr = {Op: ShiftOp; S:bool; Rd: RegisterName; Rn: RegisterName; Op2: ImReg} //Last parameter is option becase RRX only has 2 registers as parameters
+type MultInstr = {Op: MultOp; S:bool; Rd: RegisterName; Rm: RegisterName; Rs: RegisterName; Rn: RegisterName option} //Mul only has 3 registers as parameters that's why last one is option; MLS cannot have S suffix, therefore it is also option
+type SingleMemInstr = {Op: SingleMemOp; Addressing: AddressingType; ByteAddressing: bool; Pointer: RegisterName; Rd: RegisterName; Offset: FlexOp}
+type MultiMemInstr = {Op: MultMemOp; Dir: Dir; Pointer: RegisterName; Rlist: RegisterName list; WriteBack: bool}
+type MemInstr =
+| SingleMemInstr of SingleMemInstr
+| MultiMemInstr of MultiMemInstr
 
+type ArithOperation = Addition | Subtraction
+type ShiftOperation = Left | Right
 
-type Instr =
+type InstrType =
  | ArithLogicInstr of ArithLogicInstr// Flex op2
  | MoveInstr of MoveInstr // Flex op2
  | TestInstr of TestInstr// Flex op2
  | MultInstr of MultInstr
  | ShiftInstr of ShiftInstr
  | BranchInstr of BranchInstr
- | PSRInstr of MRSInstr | MSRInstr
- | MemInstr
- | MiscInstr
+ | PreAssembleBI of PreAssembleBI
+ | MemInstr of MemInstr
 
+type Instr = ConditionCode option*InstrType
 
 type PossiblyDecodedWord =
  | Instr of Instr
@@ -143,7 +160,9 @@ type MachineRepresentation = {
     Memory: Map<Address, PossiblyDecodedWord>;
     Registers: RegisterFile;
     CPSR: CPSR;
+    DataPointer: Address;
 }
+
 
 type Token = 
     | TokStrLit of string // string literal "Hello world"
@@ -154,8 +173,22 @@ type Token =
     | TokComma //Comma used to separate operands/ check syntax
     | TokS // Used for unknown characters
     | TokNeg //Used to signify negative number
+    | TokHash //start of digit
     | TokUnk
 
+type DataPInstr = {B:bool; Vals: Token list}
+type FillPInstr = {Num: int}
+type AdrPInstr = {Cond: ConditionCode option; S:bool; Rd: RegisterName; Dest: string}
+
+type PseudoInstr =
+    | DataI of DataPInstr
+    | Fill of FillPInstr
+
+type ParsedInstr =
+    | I of Instr
+    | PI of PseudoInstr
+
+//Address type TBD, 24bit field originally
 
 let isDigit (c : char) = List.contains c [ '0'..'9' ]
 let isAlpha (c : char) = List.contains c ([ 'a'..'z' ] @ [ 'A'..'Z' ])
@@ -179,11 +212,13 @@ let explodeByLine (str: string) =
 
 let opList = [ "AND" ; "EOR" ; "SUB"; "RSB"; "ADD"; "ADC"; "SBC";"RSC"; "ORR"; "BIC"; 
     "MOV"; "MVN"; "TST"; "TEQ"; "CMP"; "CMN"; "ASR"; "LSL"; "LSR"; "ROR"; "RRX"; 
-    "MUL"; "MLA"; "MLS"; "UMULL"; "UMLAL"; "SMULL"; "SMLAL" ]
+    "MUL"; "MLA"; "MLS"; "UMULL"; "UMLAL"; "SMULL"; "SMLAL"; "B"; "BL" ; "DCD"; "DCB"; "FILL"]
 
+let dataList = ["DCD"; "DCB"; "FILL"]
+let branList = ["B"; "BL"]
 let arithList = ["AND" ; "EOR" ; "SUB"; "RSB"; "ADD"; "ADC"; "SBC";"RSC"; "ORR"; "BIC"]
 let moveList = ["MOV"; "MVN"]
-let testList = ["TST"; "TEQ"; "CMP"; "CMN"]
+let tstList = ["TST"; "TEQ"; "CMP"; "CMN"]
 let shiftList = ["ASR"; "LSL"; "LSR"; "ROR"; "RRX"]
 let mulList = ["MUL"; "MLA"; "MLS"; "UMULL"; "UMLAL"; "SMULL"; "SMLAL"]
 let condList = [ "EQ"; "NE"; "CS"; "CC"; "MI"; "PL"; "VS"; "VC"; "HI"; "LS"; "GE"; "LT"; "GT"; "LE"; "AL"; "NV"]
@@ -232,7 +267,7 @@ let tokenise (src:string) =
         match lst with
         | ch :: r when isWhiteSpace ch-> tokenise1 r
         | [] -> []
-        | '#' :: r -> tokenise1 r
+        | '#' :: r -> TokHash :: tokenise1 r
         | OpMatch(t, r) ->  t :: tokenise1 r
         | CondMatch (t, r) -> t :: tokenise1 r
         | RegMatch (t, r) -> t :: tokenise1 r
@@ -349,23 +384,27 @@ let toMulInstr (i:string):MultOp =
     | "SMULL" -> SMULL
     | _ -> SMLAL
 
-let parseArithInstr tokList:ArithLogicInstr =
-    let mutable aInst:ArithLogicInstr = {Cond = None; Op = AND; S = false; Rd = R0; Rn = R0; Op2 = Shift (0y, R0)}
+let matchFlexNew t =
+    match t with
+        | [TokReg r1] -> Shift(LSL, Immediate 0 ,(toReg r1))
+        | TokReg r1 :: TokComma :: TokOp sh :: TokHash :: [TokIntLit x] when (List.exists (fun elem -> elem = sh) shiftList) -> Shift(toSInstr sh ,Immediate x, (toReg r1))
+        | TokReg r1 :: TokComma :: TokOp sh :: [TokReg r2] when (List.exists (fun elem -> elem = sh) shiftList) -> Shift(toSInstr sh , Register (toReg r2), (toReg r1))
+        | TokHash :: [TokIntLit x] -> (Const x)
+        | TokHash :: TokNeg :: [TokIntLit x] -> (Const -x)
+        | _ -> failwithf "Invalid FlexOp syntax"
+
+let parseArithInstr tokList =
+    let mutable aInst:ArithLogicInstr = {Op = AND; S = false; Rd = R0; Rn = R0; Op2 = Shift (LSL, Immediate 0, R0)}
+    let mutable cond = None;
     let matchFlex t =
-        match t with
-        | [TokReg r1] -> {aInst with Op2 = Shift(0y,(toReg r1))}
-        | TokReg r1 :: TokComma :: TokOp "LSL" :: [TokIntLit x] -> {aInst with Op2 = Shift(sbyte x, (toReg r1))}
-        | TokReg r1 :: TokComma :: TokOp "LSR" :: [TokIntLit x] -> {aInst with Op2 = Shift(sbyte (-x), (toReg r1))}
-        | [TokIntLit x] -> {aInst with Op2 = Const x}
-        | TokNeg :: [TokIntLit x] -> {aInst with Op2 = Const -x}
-        | _ -> failwithf "Invalid syntax"
+        (cond, ArithLogicInstr {aInst with Op2 = matchFlexNew t})
     let matchRegs t =
         match t with
         | TokReg r1 :: TokComma :: TokReg r2 :: TokComma :: r -> (aInst <- {aInst with Rd = toReg r1; Rn = toReg r2}); (matchFlex r)
         | _ -> failwithf "Invalid syntax"
     let matchCond t =
         match t with
-        | TokCond cnd :: r ->  (aInst <- {aInst with Cond = Some (toCond cnd)}); (matchRegs r)
+        | TokCond cnd :: r ->  cond <- Some (toCond cnd); (matchRegs r)
         | r -> matchRegs r
     let matchS t =
         match t with
@@ -377,23 +416,18 @@ let parseArithInstr tokList:ArithLogicInstr =
     | _ -> failwithf "Invalid syntax"
 
 
-let parseMoveInstr tokList:MoveInstr =
-    let mutable mInst:MoveInstr = {Cond = None; Op = MOV; S = false; Rd = R0; Op2 = Shift (0y, R0)}
+let parseMoveInstr tokList =
+    let mutable mInst:MoveInstr = {Op = MOV; S = false; Rd = R0; Op2 = Shift (LSL, Immediate 0, R0)}
+    let mutable cond = None;
     let matchFlex t =
-        match t with
-        | [TokReg r1] -> {mInst with Op2 = Shift(0y,(toReg r1))}
-        | TokReg r1 :: TokComma :: TokOp "LSL" :: [TokIntLit x] -> {mInst with Op2 = Shift(sbyte x, (toReg r1))}
-        | TokReg r1 :: TokComma :: TokOp "LSR" :: [TokIntLit x] -> {mInst with Op2 = Shift(sbyte (-x), (toReg r1))}
-        | [TokIntLit x] -> {mInst with Op2 = Const x}
-        | TokNeg :: [TokIntLit x] -> {mInst with Op2 = Const -x}
-        | _ -> failwithf "Invalid syntax"
+        (cond, MoveInstr {mInst with Op2 = matchFlexNew t})
     let matchRegs t =
         match t with
         | TokReg r1 :: TokComma :: r -> (mInst <- {mInst with Rd = toReg r1}); (matchFlex r)
         | _ -> failwithf "Invalid syntax"
     let matchCond t =
         match t with
-        | TokCond cnd :: r ->  (mInst <- {mInst with Cond = Some (toCond cnd)}); (matchRegs r)
+        | TokCond cnd :: r ->  cond <- Some (toCond cnd); (matchRegs r)
         | r -> matchRegs r
     let matchS t =
         match t with
@@ -404,45 +438,41 @@ let parseMoveInstr tokList:MoveInstr =
     | TokOp op :: t -> (mInst <- {mInst with Op = toMInstr op}); (matchS t)
     | _ -> failwithf "Invalid syntax"
 
-let parseTestInstr tokList:TestInstr =
-    let mutable tInst:TestInstr = {Cond = None; Op = TST; Rn = R0; Op2 = Shift (0y, R0)}
+let parseTestInstr tokList =
+    let mutable tInst:TestInstr = {Op = TST; Rn = R0; Op2 = Shift (LSL,Immediate 0, R0)}
+    let mutable cond = None;
     let matchFlex t =
-        match t with
-        | [TokReg r1] -> {tInst with Op2 = Shift(0y,(toReg r1))}
-        | TokReg r1 :: TokComma :: TokOp "LSL" :: [TokIntLit x] -> {tInst with Op2 = Shift(sbyte x, (toReg r1))}
-        | TokReg r1 :: TokComma :: TokOp "LSR" :: [TokIntLit x] -> {tInst with Op2 = Shift(sbyte (-x), (toReg r1))}
-        | [TokIntLit x] -> {tInst with Op2 = Const x}
-        | TokNeg :: [TokIntLit x] -> {tInst with Op2 = Const -x}
-        | _ -> failwithf "Invalid syntax"
+        (cond, TestInstr {tInst with Op2 = matchFlexNew t})
     let matchRegs t =
         match t with
         | TokReg r1 :: TokComma :: r -> (tInst <- {tInst with Rn = toReg r1}); (matchFlex r)
         | _ -> failwithf "Invalid syntax"
     let matchCond t =
         match t with
-        | TokCond cnd :: r ->  (tInst <- {tInst with Cond = Some (toCond cnd)}); (matchRegs r)
+        | TokCond cnd :: r ->  cond <- Some (toCond cnd); (matchRegs r)
         | r -> matchRegs r
 
     match tokList with
     | TokOp op :: t -> (tInst <- {tInst with Op = toTInstr op}); (matchCond t)
     | _ -> failwithf "Invalid syntax"
 
-let parseShiftInstr tokList:ShiftInstr =
-    let mutable sInst:ShiftInstr = {Cond = None; Op = LSR; S = false; Rd = R0; Rn = R0; Op2 = Shift (0y, R0)}
-    let matchFlex t =
+let parseShiftInstr tokList =
+    let mutable sInst:ShiftInstr = {Op = LSR; S = false; Rd = R0; Rn = R0; Op2 = Register R0}
+    let mutable cond = None;
+    let matchImReg t =
         match t with
-        | [TokReg r1] when sInst.Op <> RRX -> {sInst with Op2 = Shift(0y,(toReg r1))}
-        | [TokIntLit x] when sInst.Op <> RRX -> {sInst with Op2 = Const x}
-        | TokNeg :: [TokIntLit x] when sInst.Op <> RRX -> {sInst with Op2 = Const -x}
-        | [] when sInst.Op = RRX -> {sInst with Op2 = Const 0}
+        | [TokReg r1] when sInst.Op <> RRX -> (cond, ShiftInstr {sInst with Op2 = Register (toReg r1)})
+        | TokHash :: [TokIntLit x] when sInst.Op <> RRX -> (cond, ShiftInstr {sInst with Op2 = Immediate x})
+        | TokHash :: TokNeg :: [TokIntLit x] when sInst.Op <> RRX -> (cond, ShiftInstr {sInst with Op2 = Immediate -x})
+        | [] when sInst.Op = RRX -> (cond, ShiftInstr {sInst with Op2 = Immediate 0})
         | _ -> failwithf "Invalid syntax"
     let matchRegs t =
         match t with
-        | TokReg r1 :: TokComma :: TokReg r2 :: TokComma :: r -> (sInst <- {sInst with Rd = toReg r1; Rn = toReg r2}); (matchFlex r)
+        | TokReg r1 :: TokComma :: TokReg r2 :: TokComma :: r -> (sInst <- {sInst with Rd = toReg r1; Rn = toReg r2}); (matchImReg r)
         | _ -> failwithf "Invalid syntax"
     let matchCond t =
         match t with
-        | TokCond cnd :: r ->  (sInst <- {sInst with Cond = Some (toCond cnd)}); (matchRegs r)
+        | TokCond cnd :: r ->  cond <- Some (toCond cnd); (matchRegs r)
         | r -> matchRegs r
     let matchS t =
         match t with
@@ -453,12 +483,13 @@ let parseShiftInstr tokList:ShiftInstr =
     | TokOp op :: t -> (sInst <- {sInst with Op = toSInstr op}); (matchS t)
     | _ -> failwithf "Invalid syntax"
 
-let parseMulInstr tokList:MultInstr =
-    let mutable mulInst = {Cond = None; Op = MUL; S=false; Rd=R0; Rm=R0; Rs=R0; Rn = None}
+let parseMulInstr tokList =
+    let mutable mulInst = {Op = MUL; S=false; Rd=R0; Rm=R0; Rs=R0; Rn = None}
+    let mutable cond = None;
     let matchLast t =
         match t with
-        | TokComma :: [TokReg r1] when mulInst.Op <> MUL -> {mulInst with Rn = Some (toReg r1)}
-        | [] when mulInst.Op = MUL -> mulInst
+        | TokComma :: [TokReg r1] when mulInst.Op <> MUL -> (cond, MultInstr {mulInst with Rn = Some (toReg r1)})
+        | [] when mulInst.Op = MUL -> (cond, MultInstr mulInst)
         | _ -> failwithf "Invalid syntax"
     let matchRegs t =
         match t with
@@ -466,7 +497,7 @@ let parseMulInstr tokList:MultInstr =
         | _ -> failwithf "Invalid syntax"
     let matchCond t =
         match t with
-        | TokCond cnd :: r ->  (mulInst <- {mulInst with Cond = Some (toCond cnd)}); (matchRegs r)
+        | TokCond cnd :: r ->  cond <- Some (toCond cnd); (matchRegs r)
         | r -> matchRegs r
     let matchS t =
         match t with
@@ -477,44 +508,109 @@ let parseMulInstr tokList:MultInstr =
     | TokOp op :: t -> (mulInst <- {mulInst with Op = toMulInstr op}); (matchS t)
     | _ -> failwithf "Invalid syntax"
 
-let parseInstr (tokList: Token list):Instr =
+//type PreAssembleBI = {Cond: ConditionCode option; L:bool; Dest: string} 
+let parseBranInstr tokList =
+    let mutable brInst = {L = false; Dest = ""}
+    let mutable cond = None;
+    let matchDest t =
+        match t with
+        | [TokStrLit x] -> (cond, PreAssembleBI {brInst with Dest = x})
+        | _ -> failwithf "Invalid syntax"
+    let matchCond t =
+        match t with
+        | TokCond cnd :: r ->  cond <- Some (toCond cnd); (matchDest r)
+        | r -> matchDest r
     match tokList with
-    | TokOp x :: r when (List.exists (fun elem -> elem = x) arithList) -> ArithLogicInstr (parseArithInstr tokList)
-    | TokOp x :: r when (List.exists (fun elem -> elem = x) moveList) -> MoveInstr (parseMoveInstr tokList)
-    | TokOp x :: r when (List.exists (fun elem -> elem = x) testList) -> TestInstr (parseTestInstr tokList)
-    | TokOp x :: r when (List.exists (fun elem -> elem = x) shiftList) -> ShiftInstr (parseShiftInstr tokList)
-    | TokOp x :: r when (List.exists (fun elem -> elem = x) mulList) -> MultInstr (parseMulInstr tokList)
+    | TokOp "BL" :: t -> (brInst <- {brInst with L = true}); (matchCond t)
+    | TokOp "B" :: t -> matchCond t
+    | _ -> failwithf "Invalid syntax"
+
+let parseDataInstr tokList:PseudoInstr =
+    match tokList with
+    | TokOp "DCD" :: r -> DataI {B = false; Vals = r}
+    | TokOp "DCB" :: r -> DataI {B = true; Vals = r}
+    | TokOp "FILL" :: [TokIntLit x] when (x%4) = 0 -> Fill {Num = x}
+    | _ -> failwithf "Invalid syntax for Fill"
+let parseInstr (tokList: Token list):ParsedInstr =
+    match tokList with
+    | TokOp x :: r when (List.exists (fun elem -> elem = x) arithList) -> I (parseArithInstr tokList)
+    | TokOp x :: r when (List.exists (fun elem -> elem = x) moveList) -> I (parseMoveInstr tokList)
+    | TokOp x :: r when (List.exists (fun elem -> elem = x) tstList) -> I (parseTestInstr tokList)
+    | TokOp x :: r when (List.exists (fun elem -> elem = x) shiftList) -> I (parseShiftInstr tokList)
+    | TokOp x :: r when (List.exists (fun elem -> elem = x) mulList) -> I (parseMulInstr tokList)
+    | TokOp x :: r when (List.exists (fun elem -> elem = x) branList) -> I (parseBranInstr tokList)
+    | TokOp x :: r when (List.exists (fun elem -> elem = x) dataList) -> PI (parseDataInstr tokList)
     | _ -> failwithf "Unimplmeneted operand"
 
 
 //(Instr option)*(string option) list
-let createInstList (tokList:Token list list):(Instr option * string option) list =
-    let preassmeblerInstrList (tList:Token list): (Instr option)*(string option) =
+let createInstList (tokList:Token list list):(ParsedInstr option * string option) list =
+    let preassmeblerInstrList (tList:Token list): (ParsedInstr option)*(string option) =
         match tList with
         | TokStrLit s :: TokOp x :: r -> (Some (parseInstr (TokOp x :: r )), Some (s))
-        | [TokStrLit s] -> (None, Some s) //SPecial case, label is on separate line
         | TokOp x :: r -> (Some (parseInstr (TokOp x :: r )), None)
-        | _ -> failwithf "Invalid syntax"
+        //| [TokStrLit s] -> (None, Some s) //SPecial case, label is on separate line
+        | _ -> failwithf "Invalid syntax, please put the label on the same line as instruction"
     
     List.map preassmeblerInstrList tokList
     
 
-let doAssembler (iList: (Instr option * string option) list):MachineRepresentation = 
-    let final = {
+let doAssembler (iList: (ParsedInstr option * string option) list):MachineRepresentation = 
+    let mutable progMap = Map.empty
+    let init = {
         Memory = Map.empty;
         Registers = myRegs;
         CPSR = {N = false; Z = false; C = false; V = false }
+        DataPointer = 0x100u;
         }
-    let addInstruction (machState, count:Address) (elem:(Instr option * string option)) =
-        let addIn count (elem:(Instr option * string option)) =
-            match elem with
-            | (Some instr, _ ) -> machState.Memory.Add(count, Instr instr)
-            | _ -> failwithf "Not implemented, label error"
-        let memValue = addIn count elem
-        let newState = {machState with Memory = memValue}
-        (newState, count + 4u)
+        
+    //let checkPseudo (machState, pointer) elem =
+        //let addData (m:MachineRepresentation) (d:DataI) =
+          //  match d.B with
+           // | true ->
+           // | false ->
+        
+        //let addEmpty machS p num =
 
-    List.fold addInstruction (final, 0u) iList
+       // match elem with
+        //| (PI DataI x, Some str) -> progMap <- progMap.Add(str, pointer); (addData machstate pointer x)
+        //| (PI DataI x, None) -> failwithf "Invalid syntax, put label in frot of DCD/B"
+        //| (PI Fill x, Some str) -> progMap <- progMap.Add(str, pointer); (addEmpty machstate pointer x, (pointer + x/4))
+        //| (PI Fill x, None) -> (addEmpty machstate x, (pointer + x/4))
+        //| _ -> failwithf "Unimplemented pseudo operand"
+ 
+    
+    let assembleBranch (cnd,(preBr:PreAssembleBI)):Instr =
+        let mutable brInst = {L = false; Address = 0u}
+        match preBr.Dest with
+        | x when (Map.containsKey x progMap) -> (cnd, BranchInstr {brInst with L = preBr.L; Address = (Map.find x progMap)})
+        | _ -> failwithf "Unknown label"
+    let addInstruction (machState, count:Address) (elem:(Instr * string option)) =
+        //let count:uint32 = 0u
+        let addIn count (elem:(Instr * string option)) =
+            match elem with
+            | (x, PreAssembleBI instr), Some str -> progMap <- progMap.Add(str, count); machState.Memory.Add(count, Instr (assembleBranch (x,instr)))
+            | (x, PreAssembleBI instr), _  -> machState.Memory.Add(count, Instr (assembleBranch (x,instr)))
+            | (instr, Some str) -> progMap <- progMap.Add(str, count); machState.Memory.Add(count, Instr instr)
+            | (instr, _ ) -> machState.Memory.Add(count, Instr instr)       
+        
+        ({machState with Memory = (addIn count elem)}, count + 4u)
+    
+    //check length of input code and set DAta pointer accordingly
+
+    //COntinue code as normal
+   // List.fold checkPseudo (init, init.DataPointer) iList
+
+   // List.filter (remove pi)
+   // List.map (from parsedIn to Instr)
+    let transformList elem =
+        match elem with
+        | (Some (I inst), Some str) -> (inst, Some str)
+        | (Some (I inst), None) -> (inst, None)
+        | _ -> failwithf "Let me out!"
+    
+    List.map transformList iList
+    |> List.fold addInstruction (init, 0u) //iList
     |> fst
     
     
@@ -525,6 +621,7 @@ SUBS R1, R2, #-6
 loop1 MOV R1, R2
 MUL R1, R2, R3
 MLAS R1, R2, R3, R4
+B loop1
 "
 programASM
 |> tokenise
