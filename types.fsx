@@ -130,8 +130,7 @@ type ArithLogicInstr = {Cond: ConditionCode option; Op: ArithLogicOp; S:bool; Rd
 type MoveInstr = {Cond: ConditionCode option; Op: MoveOp; S:bool; Rd: RegisterName; Op2: FlexOp}
 type TestInstr = {Cond: ConditionCode option; Op: TestOp; Rn: RegisterName; Op2: FlexOp}
 type BranchInstr = {Cond: ConditionCode option; L:bool; Address: Address} //Address type TBD, 24bit field originally
-type MRSInstr = {Cond: ConditionCode option; Rd:RegisterName; Psr:PSR}
-type MSRInstr = {Cond: ConditionCode option; Flags: APSRFlag list ;Param: ImReg}
+type PreAssembleBI = {Cond: ConditionCode option; L:bool; Dest: string} 
 type ShiftInstr = {Cond: ConditionCode option; Op: ShiftOp; S:bool; Rd: RegisterName; Rn: RegisterName; Op2: ImReg} //Last parameter is option becase RRX only has 2 registers as parameters
 type MultInstr = {Cond: ConditionCode option; Op: MultOp; S:bool; Rd: RegisterName; Rm: RegisterName; Rs: RegisterName; Rn: RegisterName option} //Mul only has 3 registers as parameters that's why last one is option; MLS cannot have S suffix, therefore it is also option
 type SingleMemInstr = {Cond: ConditionCode option; Op: SingleMemOp; Addressing: AddressingType; ByteAddressing: bool; Pointer: RegisterName; Rd: RegisterName; Offset: FlexOp}
@@ -147,7 +146,7 @@ type Instr =
  | MultInstr of MultInstr
  | ShiftInstr of ShiftInstr
  | BranchInstr of BranchInstr
- | PSRInstr of MRSInstr | MSRInstr
+ | PreAssembleBI of PreAssembleBI
  | MemInstr of MemInstr
 
 
@@ -159,5 +158,6 @@ type MachineRepresentation = {
     Memory: Map<Address, PossiblyDecodedWord>;
     Registers: RegisterFile;
     CPSR: CPSR;
+    DataPointer: Address;
 }
 // val FrontEnd: string -> (MachineRepresentation Option * FrontendStatusItem list)
