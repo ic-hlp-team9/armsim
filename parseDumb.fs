@@ -484,7 +484,7 @@ let parseShiftInstr tokList =
     | _ -> failwithf "Invalid syntax"
 
 let parseMulInstr tokList =
-    let mutable mulInst = {Op = MUL; S=false; Rd=R0; Rm=R0; Rs=R0; Rn = None}
+    let mutable mulInst:MultInstr = {Op = MUL; S=false; Rd=R0; Rm=R0; Rs=R0; Rn = None}
     let mutable cond = None;
     let matchLast t =
         match t with
@@ -583,7 +583,7 @@ let doAssembler (iList: (ParsedInstr * string option) list):MachineRepresentatio
  
     
     let assembleBranch (cnd,(preBr:PreAssembleBI)):Instr =
-        let mutable brInst = {L = false; Address = 0u}
+        let mutable brInst:BranchInstr = {L = false; Address = 0u}
         match preBr.Dest with
         | x when (Map.containsKey x progMap) -> (cnd, BranchInstr {brInst with L = preBr.L; Address = (Map.find x progMap)})
         | _ -> failwithf "Unknown label"
