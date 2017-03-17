@@ -567,9 +567,39 @@ let doAssembler (iList: (ParsedInstr * string option) list):MachineRepresentatio
     let checkPseudo (machState, pointer) elem =
         
         let addData machS p d =
-            match d.B with
-            | true -> (machS, p)
-            | false -> (machS, p)
+            let rec checkSyntax tokList =
+                match tokList with
+                | TokIntLit x :: TokComma :: r -> checkSyntax r
+                | [TokIntLit x] -> true
+                | _ -> false
+            let transData acc elem =
+                match elem with 
+                | TokIntLit x -> x :: acc
+                | TokComma -> acc
+                | _ -> failwithf "Wrong format of DCD/B"
+            let doWordMemWrite mS po nLst =
+                List.fold (fun acc elem -> {(fst acc) with Memory = Map.add (snd acc) (Word elem) (fst acc).Memory}, (snd acc)+4u) (mS, po) (List.rev nLst)
+            let doByteMemWrite mS po nLst =
+                let rec createWordsFromBytes  = function
+                    | a :: b :: c :: d :: t -> a + (b <<< 8) + (c <<< 16) + (d<<<24) :: createWordsFromBytes t
+                    | a :: b :: [c] -> [a + (b <<< 8) + (c <<< 16)]
+                    | a :: [b] ->  [a + (b <<< 8)]
+                    | [a] -> [a]
+                    | [] -> []
+                let checkBytes x =
+                    match x with
+                    | num when num > 255 || num < - 128 -> failwithf "Out of range"
+                    | num -> num 
+                List.map checkBytes (List.rev nLst)
+                |> createWordsFromBytes
+                |> doWordMemWrite mS po
+            if (checkSyntax d.Vals) then
+                let numList = List.fold transData [] d.Vals
+                match d.B with
+                | true -> doByteMemWrite machS p numList
+                | false -> doWordMemWrite machS p numList
+            else
+                failwithf "Invalid syntax in DCD/B"
         
         let addEmpty machS p (num:uint32) =
            
@@ -624,8 +654,9 @@ let doAssembler (iList: (ParsedInstr * string option) list):MachineRepresentatio
     
 let programASM = "AND R1, R2, R3, LSR #4
 start ADDSNE R1, R2, R3
-
-FILL 16
+lopp DCD 21,22
+FILL 4
+gg DCB 1,2,3,4
 "
 programASM
 |> tokenise
