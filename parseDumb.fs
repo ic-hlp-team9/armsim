@@ -572,11 +572,12 @@ let doAssembler (iList: (ParsedInstr * string option) list):MachineRepresentatio
             | false -> (machS, p)
         
         let addEmpty machS p (num:uint32) =
-            List.fold (fun acc elem -> {fst(acc) with Memory = Map.add p (Word 0) machS.Memory}, p+4u) (machS, p) [0..int(num/4u)]
+           
+            List.fold (fun acc elem -> {(fst acc) with Memory = Map.add (snd acc) (Word 0) (fst acc).Memory}, (snd acc)+4u) (machS, p) [1..int(num/4u)]
 
         match elem with
         | (PI (DataI x), Some str) -> progMap <- progMap.Add(str, pointer); (addData machState pointer x)
-        | (PI (DataI x), None) -> failwithf "Invalid syntax, put label in frot of DCD/B"
+        | (PI (DataI x), None) -> failwithf "Invalid syntax, put label in front of DCD/B"
         | (PI (Fill x), Some str) -> progMap <- progMap.Add(str, pointer); addEmpty machState pointer x.Num 
         | (PI (Fill x), None) -> addEmpty machState pointer x.Num
         | (I x, _) -> (machState, pointer)
@@ -623,12 +624,7 @@ let doAssembler (iList: (ParsedInstr * string option) list):MachineRepresentatio
     
 let programASM = "AND R1, R2, R3, LSR #4
 start ADDSNE R1, R2, R3
-SUBSCC R3, R5, #34
-SUBS R1, R2, #-6
-loop1 MOV R1, R2
-MUL R1, R2, R3
-MLAS R1, R2, R3, R4
-B loop1
+
 FILL 16
 "
 programASM
