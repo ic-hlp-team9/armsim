@@ -177,7 +177,7 @@ type Token =
     | TokUnk
 
 type DataPInstr = {B:bool; Vals: Token list}
-type FillPInstr = {Num: int}
+type FillPInstr = {Num: uint32}
 type AdrPInstr = {Cond: ConditionCode option; S:bool; Rd: RegisterName; Dest: string}
 
 type PseudoInstr =
@@ -529,7 +529,7 @@ let parseDataInstr tokList:PseudoInstr =
     match tokList with
     | TokOp "DCD" :: r -> DataI {B = false; Vals = r}
     | TokOp "DCB" :: r -> DataI {B = true; Vals = r}
-    | TokOp "FILL" :: [TokIntLit x] when (x%4) = 0 -> Fill {Num = x}
+    | TokOp "FILL" :: [TokIntLit x] when (x%4) = 0 -> Fill {Num = uint32 x}
     | _ -> failwithf "Invalid syntax for Fill"
 let parseInstr (tokList: Token list):ParsedInstr =
     match tokList with
@@ -544,18 +544,18 @@ let parseInstr (tokList: Token list):ParsedInstr =
 
 
 //(Instr option)*(string option) list
-let createInstList (tokList:Token list list):(ParsedInstr option * string option) list =
-    let preassmeblerInstrList (tList:Token list): (ParsedInstr option)*(string option) =
+let createInstList (tokList:Token list list):(ParsedInstr * string option) list =
+    let preassmeblerInstrList (tList:Token list): (ParsedInstr)*(string option) =
         match tList with
-        | TokStrLit s :: TokOp x :: r -> (Some (parseInstr (TokOp x :: r )), Some (s))
-        | TokOp x :: r -> (Some (parseInstr (TokOp x :: r )), None)
+        | TokStrLit s :: TokOp x :: r -> (parseInstr (TokOp x :: r ), Some (s))
+        | TokOp x :: r -> (parseInstr (TokOp x :: r ), None)
         //| [TokStrLit s] -> (None, Some s) //SPecial case, label is on separate line
         | _ -> failwithf "Invalid syntax, please put the label on the same line as instruction"
     
     List.map preassmeblerInstrList tokList
     
 
-let doAssembler (iList: (ParsedInstr option * string option) list):MachineRepresentation = 
+let doAssembler (iList: (ParsedInstr * string option) list):MachineRepresentation = 
     let mutable progMap = Map.empty
     let init = {
         Memory = Map.empty;
@@ -564,20 +564,22 @@ let doAssembler (iList: (ParsedInstr option * string option) list):MachineRepres
         DataPointer = 0x100u;
         }
         
-    //let checkPseudo (machState, pointer) elem =
-        //let addData (m:MachineRepresentation) (d:DataI) =
-          //  match d.B with
-           // | true ->
-           // | false ->
+    let checkPseudo (machState, pointer) elem =
         
-        //let addEmpty machS p num =
+        let addData machS p d =
+            match d.B with
+            | true -> (machS, p)
+            | false -> (machS, p)
+        
+        let addEmpty machS p (num:uint32) =
+            List.fold (fun acc elem -> {fst(acc) with Memory = Map.add p (Word 0) machS.Memory}, p+4u) (machS, p) [0..int(num/4u)]
 
-       // match elem with
-        //| (PI DataI x, Some str) -> progMap <- progMap.Add(str, pointer); (addData machstate pointer x)
-        //| (PI DataI x, None) -> failwithf "Invalid syntax, put label in frot of DCD/B"
-        //| (PI Fill x, Some str) -> progMap <- progMap.Add(str, pointer); (addEmpty machstate pointer x, (pointer + x/4))
-        //| (PI Fill x, None) -> (addEmpty machstate x, (pointer + x/4))
-        //| _ -> failwithf "Unimplemented pseudo operand"
+        match elem with
+        | (PI (DataI x), Some str) -> progMap <- progMap.Add(str, pointer); (addData machState pointer x)
+        | (PI (DataI x), None) -> failwithf "Invalid syntax, put label in frot of DCD/B"
+        | (PI (Fill x), Some str) -> progMap <- progMap.Add(str, pointer); addEmpty machState pointer x.Num 
+        | (PI (Fill x), None) -> addEmpty machState pointer x.Num
+        | _ -> failwithf "Unimplemented pseudo operand"
  
     
     let assembleBranch (cnd,(preBr:PreAssembleBI)):Instr =
@@ -599,18 +601,22 @@ let doAssembler (iList: (ParsedInstr option * string option) list):MachineRepres
     //check length of input code and set DAta pointer accordingly
 
     //COntinue code as normal
-   // List.fold checkPseudo (init, init.DataPointer) iList
+    let final = fst(List.fold checkPseudo (init, init.DataPointer) iList)
 
-   // List.filter (remove pi)
-   // List.map (from parsedIn to Instr)
     let transformList elem =
         match elem with
-        | (Some (I inst), Some str) -> (inst, Some str)
-        | (Some (I inst), None) -> (inst, None)
+        | (I inst), Some str -> (inst, Some str)
+        | (I inst), None -> (inst, None)
         | _ -> failwithf "Let me out!"
     
-    List.map transformList iList
-    |> List.fold addInstruction (init, 0u) //iList
+    let removePI elem =
+        match elem with
+        | (I inst), _ -> true
+        | _ -> false
+
+    List.filter removePI iList
+    |> List.map transformList 
+    |> List.fold addInstruction (final, 0u) //iList
     |> fst
     
     
@@ -622,11 +628,12 @@ loop1 MOV R1, R2
 MUL R1, R2, R3
 MLAS R1, R2, R3, R4
 B loop1
+FILL 16
 "
 programASM
 |> tokenise
 |> createInstList
-|> doAssembler
+//|> doAssembler
 
 //|> List.
 
