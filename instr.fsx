@@ -6,7 +6,6 @@ let fetch (machineState:MachineRepresentation) : PossiblyDecodedWord =
     let PC = machineState.Registers.[R15] |> uint32
     machineState.Memory.[PC]
 
-
 let boolToInt = function
     | true -> 1
     | false -> 0
@@ -280,7 +279,7 @@ let execMultInstr (multInstr:MultInstr) (machineState:MachineRepresentation) : M
     {machineState with Registers = writeRegisters registers machineState}
 
 
-let condMatch (machineState:MachineRepresentation) (cond:ConditionCode option) =
+let condMatch (machineState:MachineRepresentation) (cond:ConditionCode option) : bool =
   let n, z = machineState.CPSR.C, machineState.CPSR.Z
   let c, v =  machineState.CPSR.C, machineState.CPSR.V
   match cond with
@@ -328,7 +327,8 @@ let pipeLine (machineState:MachineRepresentation) : MachineRepresentation =
   machineState
   |> fetch
   |> decode
-  |> execute machineState
+  |> execute {machineState with Registers=writeRegister R15 machineState (machineState.Registers.[R15]+4)}
+
 
 
 let rec execWrapper (machineState:MachineRepresentation) : MachineRepresentation =
