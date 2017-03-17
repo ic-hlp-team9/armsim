@@ -56,14 +56,16 @@ let secondOp (flexOp:FlexOp) (machineState:MachineRepresentation) : int*bool =
 
 
 let getMemWord (byteAddressing:bool) (address:Address) (machineState:MachineRepresentation) : Word =
-  match byteAddressing with
-  | false when address%4u <> 0u -> failwithf "Unaligned memory access"
-  | false -> match machineState.Memory.[address] with
-             | Word w -> w
-             | Instr intr -> failwithf "Data access attemp within instruction space"
-  | true  -> match machineState.Memory.[address-address%4u], int (address%4u) with
-             | Word w, offset -> w |> (<<<)  (24-8*offset) |> (>>>) 24
-             | Instr instr, _ -> failwithf "Data access attemp within instruction space"
+  match Map.containsKey (address-address%4u) (machineState.Memory) with
+  | false -> 0
+  | true ->  match byteAddressing with
+             | false when address%4u <> 0u -> failwithf "Unaligned memory access"
+             | false -> match machineState.Memory.[address] with
+                        | Word w -> w
+                        | Instr intr -> failwithf "Data access attemp within instruction space"
+             | true  -> match machineState.Memory.[address-address%4u], int (address%4u) with
+                        | Word w, offset -> w |> (<<<)  (24-8*offset) |> (>>>) 24
+                        | Instr instr, _ -> failwithf "Data access attemp within instruction space"
 
 
 let storeMemWord (byteAddressing:bool) (address:Address) (word:Word) (machineState:MachineRepresentation) : MachineRepresentation =
