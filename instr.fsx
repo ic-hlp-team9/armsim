@@ -7,8 +7,6 @@ let fetch (machineState:MachineRepresentation) : PossiblyDecodedWord =
     machineState.Memory.[PC]
 
 
-
-
 let boolToInt = function
     | true -> 1
     | false -> 0
@@ -50,12 +48,14 @@ let barrelShift (op:ShiftOp) (data:Register) (shift:int) (machineState:MachineRe
 
   shiftFun data shift
 
+let unpackImgReg machineState = function
+          | Immediate n -> n
+          | Register r -> machineState.Registers.[r]
 
 let secondOp (flexOp:FlexOp) (machineState:MachineRepresentation) : int*bool =
   match flexOp with
   | Const n -> int n, false
-  | Shift (sOp, shift, Rn) -> barrelShift sOp machineState.Registers.[Rn] shift machineState
-
+  | Shift (sOp, shift, Rn) -> barrelShift sOp machineState.Registers.[Rn] (unpackImgReg machineState shift) machineState
 
 
 let getMemWord (byteAddressing:bool) (address:Address) (machineState:MachineRepresentation) : Word =
@@ -172,12 +172,8 @@ let execMoveInstr (movInstr:MoveInstr) (machineState:MachineRepresentation) : Ma
     {machineState with Registers=writeRegister movInstr.Rd machineState res; CPSR = flags}
 
 
-
 let execShiftInstr (shiftInstr:ShiftInstr) (machineState:MachineRepresentation) : MachineRepresentation =
-    let op1 = machineState.Registers.[shiftInstr.Rn]
-    let op2 = match shiftInstr.Op2 with
-              | Immediate n -> n
-              | Register r -> machineState.Registers.[r]
+    let op1, op2 = machineState.Registers.[shiftInstr.Rn], unpackImgReg machineState shiftInstr.Op2
     let res, carry = barrelShift shiftInstr.Op op1 op2 machineState
     let flags =
       match shiftInstr.S with
@@ -282,34 +278,58 @@ let execMultInstr (multInstr:MultInstr) (machineState:MachineRepresentation) : M
     let resValue = fst (opMatch multInstr.Op) rm rs rn rd
     let resReg = snd (opMatch multInstr.Op)
     let registers =  List.zip resReg resValue |> Map.ofList
-    {machineState with Registers = writeRegisters registers machineState }
+    {machineState with Registers = writeRegisters registers machineState}
 
 
-let decode (possiblyInstr:PossiblyDecodedWord) : (unit->MachineRepresentation->MachineRepresentation) =
+let condMatch (machineState:MachineRepresentation) (cond:ConditionCode option) =
+  let n, z = machineState.CPSR.C, machineState.CPSR.Z
+  let c, v =  machineState.CPSR.C, machineState.CPSR.V
+  match cond with
+  | Some EQ -> z
+  | Some NE -> not z
+  | Some CS -> c
+  | Some CC -> not c
+  | Some MI -> n
+  | Some PL -> not n
+  | Some VS -> v
+  | Some VC -> not v
+  | Some HI -> c && not z
+  | Some LS -> not c && z
+  | Some GE -> n=v
+  | Some LT -> n<>v
+  | Some GT -> not z && n=v
+  | Some LE -> z || n<>v
+  | Some AL | None -> true
+  | Some NV -> false
+
+
+let decode (possiblyInstr:PossiblyDecodedWord) (machineState:MachineRepresentation) : (MachineRepresentation->MachineRepresentation) =
     match possiblyInstr with
     | Word _ -> failwithf "Word decoded"
     | Instr instr ->
         match instr with
-        | ArithLogicInstr instr -> fun () -> execArithLogicInstr instr
-        | MoveInstr instr -> fun () -> execMoveInstr instr
-        | TestInstr instr -> fun () -> execTestInstr instr
-        | MultInstr instr -> fun () -> execMultInstr instr
-        | ShiftInstr instr -> fun () -> execShiftInstr instr
-        | BranchInstr instr -> fun () -> execBranchInstr instr
-        | MemInstr instr -> match instr with
-                            | SingleMemInstr instr -> fun () -> execSingleMemInstr instr
-                            | MultiMemInstr instr -> fun () -> execMultiMemInstr instr
-        | _ -> failwithf "not implemented"
+        | cond, someInstr when not (condMatch machineState cond) -> execMoveInstr {Op=MOV; S=false; Rd=R0; Op2=Shift (LSL, Immediate 0, R0)}
+        | _ -> match snd instr with
+               | ArithLogicInstr instr -> execArithLogicInstr instr
+               | MoveInstr instr -> execMoveInstr instr
+               | TestInstr instr -> execTestInstr instr
+               | MultInstr instr -> execMultInstr instr
+               | ShiftInstr instr -> execShiftInstr instr
+               | BranchInstr instr -> execBranchInstr instr
+               | MemInstr memInstr -> match memInstr with
+                                      | SingleMemInstr instr -> execSingleMemInstr instr
+                                      | MultiMemInstr instr -> execMultiMemInstr instr
+               | _ -> failwithf "not implemented"
 
 
-let execute arg = fun x -> x() arg
+let execute ms = fun x -> x ms ms
 
 
 let pipeLine (machineState:MachineRepresentation) : MachineRepresentation =
   machineState
   |> fetch
   |> decode
-  |> execute {machineState with Registers= writeRegister R15 machineState (machineState.Registers.[R15] + 4)}
+  |> execute machineState
 
 
 let rec execWrapper (machineState:MachineRepresentation) : MachineRepresentation =

@@ -116,6 +116,7 @@ type Dir =
 type Nibble = byte //placeholder
 type Imm8m = int //placeholder, should be a number created by rotating an 8-bit value by an even number of bits within a 32-bit register
 
+
 type ImReg =
 | Immediate of Imm8m
 | Register of RegisterName
@@ -123,23 +124,23 @@ type ImReg =
 
 type FlexOp =
 | Const of Imm8m
-| Shift of ShiftOp*sbyte*RegisterName
+| Shift of ShiftOp*ImReg*RegisterName
 
 
-type ArithLogicInstr = {Cond: ConditionCode option; Op: ArithLogicOp; S:bool; Rd: RegisterName; Rn: RegisterName; Op2: FlexOp}
-type MoveInstr = {Cond: ConditionCode option; Op: MoveOp; S:bool; Rd: RegisterName; Op2: FlexOp}
-type TestInstr = {Cond: ConditionCode option; Op: TestOp; Rn: RegisterName; Op2: FlexOp}
-type BranchInstr = {Cond: ConditionCode option; L:bool; Address: Address} //Address type TBD, 24bit field originally
-type PreAssembleBI = {Cond: ConditionCode option; L:bool; Dest: string} 
-type ShiftInstr = {Cond: ConditionCode option; Op: ShiftOp; S:bool; Rd: RegisterName; Rn: RegisterName; Op2: ImReg} //Last parameter is option becase RRX only has 2 registers as parameters
-type MultInstr = {Cond: ConditionCode option; Op: MultOp; S:bool; Rd: RegisterName; Rm: RegisterName; Rs: RegisterName; Rn: RegisterName option} //Mul only has 3 registers as parameters that's why last one is option; MLS cannot have S suffix, therefore it is also option
-type SingleMemInstr = {Cond: ConditionCode option; Op: SingleMemOp; Addressing: AddressingType; ByteAddressing: bool; Pointer: RegisterName; Rd: RegisterName; Offset: FlexOp}
-type MultiMemInstr = {Cond: ConditionCode option; Op: MultMemOp; Dir: Dir; Pointer: RegisterName; Rlist: RegisterName list; WriteBack: bool}
+type ArithLogicInstr = {Op: ArithLogicOp; S:bool; Rd: RegisterName; Rn: RegisterName; Op2: FlexOp}
+type MoveInstr = {Op: MoveOp; S:bool; Rd: RegisterName; Op2: FlexOp}
+type TestInstr = {Op: TestOp; Rn: RegisterName; Op2: FlexOp}
+type BranchInstr = {L:bool; Address: Address} //Address type TBD, 24bit field originally
+type PreAssembleBI = {L:bool; Dest: string}
+type ShiftInstr = {Op: ShiftOp; S:bool; Rd: RegisterName; Rn: RegisterName; Op2: ImReg} //Last parameter is option becase RRX only has 2 registers as parameters
+type MultInstr = {Op: MultOp; S:bool; Rd: RegisterName; Rm: RegisterName; Rs: RegisterName; Rn: RegisterName option} //Mul only has 3 registers as parameters that's why last one is option; MLS cannot have S suffix, therefore it is also option
+type SingleMemInstr = {Op: SingleMemOp; Addressing: AddressingType; ByteAddressing: bool; Pointer: RegisterName; Rd: RegisterName; Offset: FlexOp}
+type MultiMemInstr = {Op: MultMemOp; Dir: Dir; Pointer: RegisterName; Rlist: RegisterName list; WriteBack: bool}
 type MemInstr =
 | SingleMemInstr of SingleMemInstr
 | MultiMemInstr of MultiMemInstr
 
-type Instr =
+type InstrType =
  | ArithLogicInstr of ArithLogicInstr// Flex op2
  | MoveInstr of MoveInstr // Flex op2
  | TestInstr of TestInstr// Flex op2
@@ -149,6 +150,7 @@ type Instr =
  | PreAssembleBI of PreAssembleBI
  | MemInstr of MemInstr
 
+type Instr = ConditionCode option*InstrType
 
 type PossiblyDecodedWord =
  | Instr of Instr
