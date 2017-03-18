@@ -745,9 +745,9 @@ let doAssembler (iList: (ParsedInstr * string option) list):MachineRepresentatio
         ({machState with Memory = (addIn count elem)}, count + 4u)
     
     //check length of input code and set DAta pointer accordingly
-
+    let updated = {init with DataPointer = uint32 (256 * int (((iList.Length*4)/256)+1))}
     //COntinue code as normal
-    let final = fst(List.fold checkPseudo (init, init.DataPointer) iList)
+    let final = fst(List.fold checkPseudo (updated, updated.DataPointer) iList)
 
     let transformList elem =
         match elem with
