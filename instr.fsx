@@ -194,6 +194,7 @@ let execSingleMemInstr (memInstr:SingleMemInstr) (machineState:MachineRepresenta
   let offset = secondOp memInstr.Offset machineState |> fst
   let loadPointer, resPointer =
     match memInstr.Addressing, machineState.Registers.[memInstr.Pointer] with
+    | Offset, adr -> adr+offset, adr
     | Pre, adr -> adr, adr+offset
     | Post, adr -> adr+offset, adr+offset
   let writtenMem =

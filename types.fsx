@@ -3,7 +3,10 @@ module Types
 type Register = int
 type Word = int
 type Address = uint32
-type AddressingType = Pre | Post
+type AddressingType = Pre | Post | Offset
+type ArithOperation = Addition | Subtraction
+type ShiftOperation = Left | Right
+
 
 type FrontendStatus =
     | Critical of string
@@ -12,6 +15,7 @@ type FrontendStatus =
     | Info of string
     | Debug of string
 
+
 type FrontendStatusItem = {
     State: FrontendStatus;
     Line: uint32 Option;
@@ -19,9 +23,12 @@ type FrontendStatusItem = {
     Text: string;
 }
 
+
 type RegisterName = R0 | R1 | R2 | R3 | R4 | R5| R6 | R7 | R8 | R9 | R10 | R11 | R12 | R13 | R14 | R15
 
+
 type RegisterFile =  Map<RegisterName, Register>
+
 
 type CPSR = {N:bool; Z:bool; C: bool; V: bool}
 
@@ -140,8 +147,6 @@ type MemInstr =
 | SingleMemInstr of SingleMemInstr
 | MultiMemInstr of MultiMemInstr
 
-type ArithOperation = Addition | Subtraction
-type ShiftOperation = Left | Right
 
 type InstrType =
  | ArithLogicInstr of ArithLogicInstr// Flex op2
