@@ -139,6 +139,7 @@ type MoveInstr = {Op: MoveOp; S:bool; Rd: RegisterName; Op2: FlexOp}
 type TestInstr = {Op: TestOp; Rn: RegisterName; Op2: FlexOp}
 type BranchInstr = {L:bool; Address: Address} //Address type TBD, 24bit field originally
 type PreAssembleBI = {L:bool; Dest: string}
+type PreAssembleAL = {Rd: RegisterName; Address:string}
 type ShiftInstr = {Op: ShiftOp; S:bool; Rd: RegisterName; Rn: RegisterName; Op2: ImReg} //Last parameter is option becase RRX only has 2 registers as parameters
 type MultInstr = {Op: MultOp; S:bool; Rd: RegisterName; Rm: RegisterName; Rs: RegisterName; Rn: RegisterName option} //Mul only has 3 registers as parameters that's why last one is option; MLS cannot have S suffix, therefore it is also option
 type SingleMemInstr = {Op: SingleMemOp; Addressing: AddressingType; ByteAddressing: bool; Pointer: RegisterName; Rd: RegisterName; Offset: FlexOp}
@@ -156,6 +157,7 @@ type InstrType =
  | ShiftInstr of ShiftInstr
  | BranchInstr of BranchInstr
  | PreAssembleBI of PreAssembleBI
+ | PreAssembleAL of PreAssembleAL
  | MemInstr of MemInstr
 
 type Instr = ConditionCode option*InstrType
