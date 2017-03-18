@@ -1,7 +1,7 @@
 type Register = int
 type Word = int
 type Address = uint32
-type AddressingType = Pre | Post
+type AddressingType = Pre | Post | Offset
 
 type FrontendStatus =
     | Critical of string
@@ -129,6 +129,7 @@ type MoveInstr = {Op: MoveOp; S:bool; Rd: RegisterName; Op2: FlexOp}
 type TestInstr = {Op: TestOp; Rn: RegisterName; Op2: FlexOp}
 type BranchInstr = {L:bool; Address: Address} //Address type TBD, 24bit field originally
 type PreAssembleBI = {L:bool; Dest: string}
+type PreAssembleAL = {Rd: RegisterName; Address:string}
 type ShiftInstr = {Op: ShiftOp; S:bool; Rd: RegisterName; Rn: RegisterName; Op2: ImReg} //Last parameter is option becase RRX only has 2 registers as parameters
 type MultInstr = {Op: MultOp; S:bool; Rd: RegisterName; Rm: RegisterName; Rs: RegisterName; Rn: RegisterName option} //Mul only has 3 registers as parameters that's why last one is option; MLS cannot have S suffix, therefore it is also option
 type SingleMemInstr = {Op: SingleMemOp; Addressing: AddressingType; ByteAddressing: bool; Pointer: RegisterName; Rd: RegisterName; Offset: FlexOp}
@@ -148,6 +149,7 @@ type InstrType =
  | ShiftInstr of ShiftInstr
  | BranchInstr of BranchInstr
  | PreAssembleBI of PreAssembleBI
+ | PreAssembleAL of PreAssembleAL
  | MemInstr of MemInstr
 
 type Instr = ConditionCode option*InstrType
@@ -165,16 +167,20 @@ type MachineRepresentation = {
 
 
 type Token = 
-    | TokStrLit of string // string literal "Hello world"
-    | TokIntLit of int // integer literal 1234 (only allow positive literals but unary - can be used to make them negative)
-    | TokOp of string // operators like "+", "*", "::", "NOT" but also keywords like "LET", "IF".
+    | TokStrLit of string // string literal labels, with integer values permitted inside
+    | TokIntLit of int // integer literal 
+    | TokOp of string // operators
+    | TokDir of string //Used with ldm IA, IB...
     | TokCond of string //condition codes
-    | TokReg of string
+    | TokReg of string //Register tokens
     | TokComma //Comma used to separate operands/ check syntax
     | TokS // Used for unknown characters
     | TokNeg //Used to signify negative number
     | TokHash //start of digit
-    | TokUnk
+    | TokEq // equal sign
+    | TokRSbracket | TokLSbracket // right square and left square bracket
+    | TokRCbracket | TokLCbracket // right  curly and left curly bracket
+    | TokExcl
 
 type DataPInstr = {B:bool; Vals: Token list}
 type FillPInstr = {Num: uint32}
@@ -212,8 +218,11 @@ let explodeByLine (str: string) =
 
 let opList = [ "AND" ; "EOR" ; "SUB"; "RSB"; "ADD"; "ADC"; "SBC";"RSC"; "ORR"; "BIC"; 
     "MOV"; "MVN"; "TST"; "TEQ"; "CMP"; "CMN"; "ASR"; "LSL"; "LSR"; "ROR"; "RRX"; 
-    "MUL"; "MLA"; "MLS"; "UMULL"; "UMLAL"; "SMULL"; "SMLAL"; "B"; "BL" ; "DCD"; "DCB"; "FILL"]
+    "MUL"; "MLA"; "MLS"; "UMULL"; "UMLAL"; "SMULL"; "SMLAL"; "B"; "BL" ; "DCD"; "DCB"; "FILL";
+    "LDR"; "LDRB"; "STR"; "STRB"; "LDM"; "STM"; "ADR"]
 
+let multMemList = ["LDM"; "STM"]
+let singleMemList = ["LDR"; "LDRB"; "STR"; "STRB"]
 let dataList = ["DCD"; "DCB"; "FILL"]
 let branList = ["B"; "BL"]
 let arithList = ["AND" ; "EOR" ; "SUB"; "RSB"; "ADD"; "ADC"; "SBC";"RSC"; "ORR"; "BIC"]
@@ -223,6 +232,7 @@ let shiftList = ["ASR"; "LSL"; "LSR"; "ROR"; "RRX"]
 let mulList = ["MUL"; "MLA"; "MLS"; "UMULL"; "UMLAL"; "SMULL"; "SMLAL"]
 let condList = [ "EQ"; "NE"; "CS"; "CC"; "MI"; "PL"; "VS"; "VC"; "HI"; "LS"; "GE"; "LT"; "GT"; "LE"; "AL"; "NV"]
 
+let dirList = ["IA"; "IB"; "DA"; "DB"; "ED"; "FD"; "EA"; "FA"]
 let regList = [ "R0"; "R1"; "R2"; "R3"; "R4"; "R5"; "R6"; "R7"; "R8"; "R9"; "R10"; "R11"; "R12"; "R13"; "R14"; "R15"]
 let rec charListStartsWith (x : char list) (str : string) = 
     let removeFirstChar (s:string) = 
@@ -240,6 +250,10 @@ let (|OpMatch|_|) cLst =
 let (|CondMatch|_|) cLst = 
     List.tryFind (charListStartsWith cLst) condList 
     |> Option.map (fun op -> TokCond op, List.skip op.Length cLst)
+
+let (|DirMatch|_|) cLst = 
+    List.tryFind (charListStartsWith cLst) dirList 
+    |> Option.map (fun op -> TokDir op, List.skip op.Length cLst)
 
 let (|RegMatch|_|) cLst = 
     List.tryFind (charListStartsWith cLst) regList 
@@ -272,35 +286,22 @@ let tokenise (src:string) =
         | CondMatch (t, r) -> t :: tokenise1 r
         | RegMatch (t, r) -> t :: tokenise1 r
         | IntMatch(t, r) -> t :: tokenise1 r
+        | DirMatch (t, r) -> t :: tokenise1 r
         | ',' :: r -> TokComma :: tokenise1 r
         | 'S' :: r -> TokS :: tokenise1 r
+        | '=' :: r -> TokEq :: tokenise1 r
         | '-' :: num :: r when isDigit num -> TokNeg :: tokenise1 (num :: r)
         | StrMatch(t, r) -> t :: tokenise1 r
-        | ch :: r -> TokUnk :: tokenise1 r  //Uknown character, add unknow token to the list 
+        | '[' :: r -> TokLSbracket :: tokenise1 r
+        | ']' :: r -> TokRSbracket :: tokenise1 r
+        | '{' :: r -> TokLCbracket :: tokenise1 r
+        | '}' :: r -> TokRCbracket :: tokenise1 r
+        | '!' :: r -> TokExcl :: tokenise1 r
+        | _ -> failwithf "Invalid character input"
     src
     |> explodeByLine
     |> List.map tokenise1
 
-
-let myRegs =
-   [ R0, 0;
-      R1, 0;
-      R2, 0;
-      R3, 0;
-      R4, 0;
-      R5, 0;
-      R6, 0;
-      R7, 0;
-      R8, 0;
-      R9, 0;
-      R10, 0;
-      R11, 0;
-      R12, 0;
-      R13, 0;
-      R14, 0;
-      R15, 0
-      ]
-   |> Map.ofList
 //type ArithLogicInstr = {Cond: ConditionCode option; Op: ArithLogicOp; S:bool; Rd: RegisterName; Rn: RegisterName; Op2: FlexOp}
 let toReg (r:string):RegisterName =
     match r with
@@ -384,6 +385,16 @@ let toMulInstr (i:string):MultOp =
     | "SMULL" -> SMULL
     | _ -> SMLAL
 
+let toDir i (isLoad:bool):Dir =
+    match i with
+    | "IA" -> IA
+    | "IB" -> IB
+    | "DA" -> DA
+    | "DB" -> DB
+    | "ED" -> if isLoad then IB else DA
+    | "EA" -> if isLoad then DB else IA
+    | "FD" -> if isLoad then IA else DB
+    | _ -> if isLoad then DA else IB
 let matchFlexNew t =
     match t with
         | [TokReg r1] -> Shift(LSL, Immediate 0 ,(toReg r1))
@@ -531,14 +542,108 @@ let parseDataInstr tokList:PseudoInstr =
     | TokOp "DCB" :: r -> DataI {B = true; Vals = r}
     | TokOp "FILL" :: [TokIntLit x] when (x%4) = 0 -> Fill {Num = uint32 x}
     | _ -> failwithf "Invalid syntax for Fill"
+
+//type SingleMemInstr = {Op: SingleMemOp; Addressing: AddressingType; ByteAddressing: bool; Pointer: RegisterName; Rd: RegisterName; Offset: FlexOp}
+let parseSingleMemInstr tokList =
+    let mutable smInstr:SingleMemInstr = {Op = LDR; Addressing = Offset; ByteAddressing = false; Pointer = R0; Rd = R0; Offset = Const 0}
+    let mutable cond = None
+    let checkExcl t =
+        match t with
+        | [TokExcl] -> (cond, MemInstr (SingleMemInstr {smInstr with Addressing = Pre}))
+        | [] -> (cond, MemInstr (SingleMemInstr smInstr))
+        | _ -> failwithf "syntax error"
+    let matchFlexInter t =
+        match t with
+        | TokReg r1 :: TokRSbracket :: r -> smInstr <- {smInstr with Offset = Shift(LSL, Immediate 0 ,(toReg r1))}; checkExcl r
+        | TokReg r1 :: TokComma :: TokOp sh :: TokHash :: TokIntLit x :: TokRSbracket :: r when (List.exists (fun elem -> elem = sh) shiftList) -> smInstr <- {smInstr with Offset = Shift(toSInstr sh ,Immediate x, (toReg r1))}; checkExcl r
+        | TokReg r1 :: TokComma :: TokOp sh :: TokReg r2 :: TokRSbracket :: r when (List.exists (fun elem -> elem = sh) shiftList) -> smInstr <- {smInstr with Offset = Shift(toSInstr sh , Register (toReg r2), (toReg r1))}; checkExcl r
+        | TokHash :: TokIntLit x :: TokRSbracket :: r -> smInstr <- {smInstr with Offset = (Const x)}; checkExcl r
+        | TokHash :: TokNeg :: TokIntLit x :: TokRSbracket :: r -> smInstr <- {smInstr with Offset = (Const -x)}; checkExcl r
+        | _ -> failwithf "Invalid FlexOp syntax"
+    let matchLast t =
+        match t with
+        | TokLSbracket :: TokReg r1 :: [TokRSbracket] -> (cond, MemInstr (SingleMemInstr {smInstr with Pointer = toReg r1}))
+        | TokLSbracket :: TokReg r1 :: TokRSbracket :: TokComma :: r -> (cond, MemInstr (SingleMemInstr {smInstr with Pointer = toReg r1; Offset = matchFlexNew r; Addressing = Post}))
+        | TokLSbracket :: TokReg r1 :: TokComma :: r -> smInstr <- {smInstr with Pointer = toReg r1}; matchFlexInter r
+        | _ -> failwithf "Invalid syntax"
+    let matchReg t =
+        match t with
+        | TokReg r1 :: TokComma :: r -> (smInstr <- {smInstr with Rd = toReg r1}); matchLast r
+        | _ -> failwithf "Invalid syntax"
+    let matchCond t =
+        match t with
+        | TokCond cnd :: r ->  cond <- Some (toCond cnd); (matchReg r)
+        | r -> matchReg r
+    match tokList with
+    | TokOp "LDR" :: r -> matchCond r
+    | TokOp "LDRB" :: r -> (smInstr <- {smInstr with ByteAddressing = true}); matchCond r
+    | TokOp "STR" :: r -> (smInstr <- {smInstr with Op = STR}); matchCond r
+    | TokOp "STRB" :: r -> (smInstr <- {smInstr with Op = STR; ByteAddressing = true}); matchCond r
+    | _ -> failwithf "not possible"
+
+//type MultiMemInstr = {Op: MultMemOp; Dir: Dir; Pointer: RegisterName; Rlist: RegisterName list; WriteBack: bool}
+let parseMultMemInstr tokList =
+    let mutable mmInstr:MultiMemInstr = {Op = LDM; Dir = DB; Pointer = R0; Rlist = []; WriteBack = false}
+    let mutable cond = None
+    let makeListRegs tokenList =
+        let rec checkSyntax tokList =
+            match tokList with
+            | TokLCbracket :: TokReg r1 :: [TokRCbracket] -> true
+            | TokLCbracket :: TokReg r1 :: TokComma :: r -> checkSyntax r
+            | TokReg r1 :: TokComma :: r -> checkSyntax r
+            | TokReg r1 :: [TokRCbracket] -> true
+            | _ -> false
+        
+        if checkSyntax tokenList then
+            let createRegList acc elem =
+                match elem with
+                | TokReg r1 -> toReg r1 :: acc
+                | _ -> acc
+            List.fold createRegList [] tokenList 
+        else
+            failwithf "Wrong syntax in your list of registers"
+    let matchPointer t =
+        match t with
+        | TokReg r1 :: TokComma :: r -> (cond, MemInstr (MultiMemInstr {mmInstr with Pointer = toReg r1; Rlist = List.rev (makeListRegs r)}))
+        | TokReg r1 :: TokExcl :: TokComma :: r -> (cond, MemInstr (MultiMemInstr {mmInstr with Pointer = toReg r1; WriteBack = true; Rlist = List.rev (makeListRegs r)}))
+        | _ -> failwithf "Invalid syntax"
+    let matchCond t =
+        match t with
+        | TokCond cnd :: r ->  cond <- Some (toCond cnd); (matchPointer r)
+        | r -> matchPointer r
+    match tokList with
+    | TokOp "LDM" :: TokDir d :: r -> mmInstr <- {mmInstr with Dir = (toDir d true)}; matchCond r
+    | TokOp "STM" :: TokDir d :: r -> mmInstr <- {mmInstr with Op = STM; Dir = (toDir d false)}; matchCond r
+    | _ -> failwithf "Invalid syntax on your LDM/STM"
+
+let parseAddrLoad tokList =
+    let mutable cond = None
+    let mutable isAdr = false
+    let matchRest t =
+        match t with 
+        | TokReg r1 :: TokComma :: [TokStrLit str] when isAdr ->  (cond, PreAssembleAL {Rd = toReg r1; Address = str})
+        | TokReg r1 :: TokComma :: TokEq :: [TokStrLit str] when (not isAdr) -> (cond, PreAssembleAL {Rd = toReg r1; Address = str})
+        | _ -> failwithf "Invalid syntax"
+    let matchCond t =
+        match t with
+        | TokCond cnd :: r ->  cond <- Some (toCond cnd); (matchRest r)
+        | r -> matchRest r
+    match tokList with
+    | TokOp "ADR" :: r -> isAdr <- true; matchCond r
+    | TokOp "LDR" :: r -> matchCond r
+    | _ -> failwithf "Not possible"
 let parseInstr (tokList: Token list):ParsedInstr =
     match tokList with
+    | TokOp "ADR" :: r -> I (parseAddrLoad tokList)
+    | TokOp "LDR" :: r when (List.exists (fun elem -> elem = TokEq) r) -> I (parseAddrLoad tokList)
     | TokOp x :: r when (List.exists (fun elem -> elem = x) arithList) -> I (parseArithInstr tokList)
     | TokOp x :: r when (List.exists (fun elem -> elem = x) moveList) -> I (parseMoveInstr tokList)
     | TokOp x :: r when (List.exists (fun elem -> elem = x) tstList) -> I (parseTestInstr tokList)
     | TokOp x :: r when (List.exists (fun elem -> elem = x) shiftList) -> I (parseShiftInstr tokList)
     | TokOp x :: r when (List.exists (fun elem -> elem = x) mulList) -> I (parseMulInstr tokList)
     | TokOp x :: r when (List.exists (fun elem -> elem = x) branList) -> I (parseBranInstr tokList)
+    | TokOp x :: r when (List.exists (fun elem -> elem = x) singleMemList) -> I ((parseSingleMemInstr tokList))
+    | TokOp x :: r when (List.exists (fun elem -> elem = x) multMemList) -> I ((parseMultMemInstr tokList))
     | TokOp x :: r when (List.exists (fun elem -> elem = x) dataList) -> PI (parseDataInstr tokList)
     | _ -> failwithf "Unimplmeneted operand"
 
@@ -555,6 +660,10 @@ let createInstList (tokList:Token list list):(ParsedInstr * string option) list 
     List.map preassmeblerInstrList tokList
     
 
+let myRegs =
+   [ R0, 0;  R1, 0;  R2, 0; R3, 0; R4, 0; R5, 0;  R6, 0; R7, 0; R8, 0; R9, 0; R10, 0; R11, 0; R12, 0; R13, 0;  R14, 0; R15, 0]
+   |> Map.ofList
+
 let doAssembler (iList: (ParsedInstr * string option) list):MachineRepresentation = 
     let mutable progMap = Map.empty
     let init = {
@@ -564,8 +673,7 @@ let doAssembler (iList: (ParsedInstr * string option) list):MachineRepresentatio
         DataPointer = 0x100u;
         }
         
-    let checkPseudo (machState, pointer) elem =
-        
+    let checkPseudo (machState, pointer) elem =       
         let addData machS p d =
             let rec checkSyntax tokList =
                 match tokList with
@@ -619,10 +727,16 @@ let doAssembler (iList: (ParsedInstr * string option) list):MachineRepresentatio
         match preBr.Dest with
         | x when (Map.containsKey x progMap) -> (cnd, BranchInstr {brInst with L = preBr.L; Address = (Map.find x progMap)})
         | _ -> failwithf "Unknown label"
+    let assembleAddresLoad (cnd, (preAL:PreAssembleAL)):Instr =
+        match preAL.Address with
+        | x when (Map.containsKey x progMap) -> (cnd, MoveInstr {Op = MOV; S = false; Rd = preAL.Rd; Op2 = Const (int (Map.find x progMap))})
+        | _ -> failwithf "Unknown label"
     let addInstruction (machState, count:Address) (elem:(Instr * string option)) =
         //let count:uint32 = 0u
         let addIn count (elem:(Instr * string option)) =
             match elem with
+            | (x, PreAssembleAL instr), Some str -> progMap <- progMap.Add(str, count); machState.Memory.Add(count, Instr (assembleAddresLoad (x,instr)))
+            | (x, PreAssembleAL instr), _  -> machState.Memory.Add(count, Instr (assembleAddresLoad (x,instr)))
             | (x, PreAssembleBI instr), Some str -> progMap <- progMap.Add(str, count); machState.Memory.Add(count, Instr (assembleBranch (x,instr)))
             | (x, PreAssembleBI instr), _  -> machState.Memory.Add(count, Instr (assembleBranch (x,instr)))
             | (instr, Some str) -> progMap <- progMap.Add(str, count); machState.Memory.Add(count, Instr instr)
@@ -655,6 +769,9 @@ let doAssembler (iList: (ParsedInstr * string option) list):MachineRepresentatio
 let programASM = "AND R1, R2, R3, LSR #4
 start ADDSNE R1, R2, R3
 lopp DCD 21,22
+ADR R1, gg
+LDR R1, [R2, R4]!
+LDMIA R0, {R1, R2, R3, R4}
 FILL 4
 gg DCB 1,2,3,4
 "
