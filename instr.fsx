@@ -333,7 +333,11 @@ let pipeLine (machineState:MachineRepresentation) : MachineRepresentation =
 
 
 let rec execWrapper (machineState:MachineRepresentation) : MachineRepresentation =
-  let stoppingCondition = (machineState.Registers.[R15]/4 = List.length (Map.toList machineState.Memory))
+  let filterInstr = function
+  | Instr instr -> true
+  | Word word -> false
+  let lastAddress = machineState.Memory |> Map.toList |> List.map snd |> List.filter (filterInstr) |> List.length
+  let stoppingCondition = (machineState.Registers.[R15]/4 = lastAddress)
   match stoppingCondition with
   | true -> machineState
   | false -> execWrapper (pipeLine machineState)
