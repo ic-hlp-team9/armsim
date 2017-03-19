@@ -4,7 +4,10 @@ open Types
 
 let fetch (machineState:MachineRepresentation) : PossiblyDecodedWord =
     let PC = machineState.Registers.[R15] |> uint32
-    machineState.Memory.[PC]
+    match Map.containsKey PC machineState.Memory  with
+    | false -> failwithf "No instruction found at given address"
+    | true -> machineState.Memory.[PC]
+
 
 let boolToInt = function
     | true -> 1
@@ -44,9 +47,11 @@ let barrelShift (op:ShiftOp) (data:Register) (shift:int) (machineState:MachineRe
 
   shiftFun data shift
 
+
 let unpackImgReg machineState = function
           | Immediate n -> n
           | Register r -> machineState.Registers.[r]
+
 
 let secondOp (flexOp:FlexOp) (machineState:MachineRepresentation) : int*bool =
   match flexOp with
@@ -203,7 +208,7 @@ let execSingleMemInstr (memInstr:SingleMemInstr) (machineState:MachineRepresenta
              {machineState with Registers = (writeRegister memInstr.Rd machineState memData)}
     | STR -> let memData = machineState.Registers.[memInstr.Rd]
              storeMemWord memInstr.ByteAddressing (uint32 loadPointer) memData machineState
-  {writtenMem with Registers = writeRegister memInstr.Pointer machineState resPointer}
+  {writtenMem with Registers = (writeRegister memInstr.Pointer writtenMem resPointer)}
 
 
 let execMultiMemInstr (memInstr:MultiMemInstr) (machineState:MachineRepresentation) : MachineRepresentation =
@@ -329,7 +334,6 @@ let pipeLine (machineState:MachineRepresentation) : MachineRepresentation =
   |> fetch
   |> decode
   |> execute {machineState with Registers=writeRegister R15 machineState (machineState.Registers.[R15]+4)}
-
 
 
 let rec execWrapper (machineState:MachineRepresentation) : MachineRepresentation =
