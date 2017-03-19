@@ -8,7 +8,6 @@ let fetch (machineState:MachineRepresentation) : PossiblyDecodedWord =
     | false -> failwithf "No instruction found at given address"
     | true -> machineState.Memory.[PC]
 
-
 let boolToInt = function
     | true -> 1
     | false -> 0
@@ -47,11 +46,9 @@ let barrelShift (op:ShiftOp) (data:Register) (shift:int) (machineState:MachineRe
 
   shiftFun data shift
 
-
 let unpackImgReg machineState = function
           | Immediate n -> n
           | Register r -> machineState.Registers.[r]
-
 
 let secondOp (flexOp:FlexOp) (machineState:MachineRepresentation) : int*bool =
   match flexOp with
@@ -75,6 +72,7 @@ let getMemWord (byteAddressing:bool) (address:Address) (machineState:MachineRepr
 let storeMemWord (byteAddressing:bool) (address:Address) (word:Word) (machineState:MachineRepresentation) : MachineRepresentation =
  match byteAddressing with
  | false when address%4u <> 0u -> failwithf "Unaligned memory access"
+ | false when not (Map.containsKey (address-address%4u) (machineState.Memory)) -> {machineState with Memory = Map.add address (Word word) machineState.Memory}
  | false -> match machineState.Memory.[address] with
             | Word oldContent -> {machineState with Memory = Map.add address (Word word) machineState.Memory}
             | Instr intr -> failwithf "Data access attemp within instruction space"
@@ -200,8 +198,8 @@ let execSingleMemInstr (memInstr:SingleMemInstr) (machineState:MachineRepresenta
   let loadPointer, resPointer =
     match memInstr.Addressing, machineState.Registers.[memInstr.Pointer] with
     | Offset, adr -> adr+offset, adr
-    | Pre, adr -> adr, adr+offset
-    | Post, adr -> adr+offset, adr+offset
+    | Pre, adr -> adr+offset, adr+offset
+    | Post, adr -> adr, adr+offset
   let writtenMem =
     match memInstr.Op with
     | LDR -> let memData = getMemWord memInstr.ByteAddressing (uint32 loadPointer) machineState;
@@ -345,3 +343,8 @@ let rec execWrapper (machineState:MachineRepresentation) : MachineRepresentation
   match stoppingCondition with
   | true -> machineState
   | false -> execWrapper (pipeLine machineState)
+
+let rec execFinite n ms =
+    match n with
+    | 0 -> ms
+    | _ -> execFinite (n-1) (pipeLine ms)
