@@ -298,7 +298,7 @@ let tokenise (src:string) =
         | '}' :: r -> TokRCbracket :: tokenise1 r
         | '!' :: r -> TokExcl :: tokenise1 r
         | _ -> failwith "Syntax error: Invalid character used in the input, check your code"
-    src
+    src.ToUpper()
     |> explodeByLine
     |> List.map tokenise1
 
@@ -657,7 +657,8 @@ let createInstList (tokList:Token list list):(ParsedInstr * string option) list 
         //| [TokStrLit s] -> (None, Some s) //SPecial case, label is on separate line
         | _ -> failwith "Syntax error: Please put the label on the same line as instruction"
     
-    List.map preassmeblerInstrList tokList
+    List.filter (fun x -> x<>[]) tokList
+    |> List.map preassmeblerInstrList
     
 
 let myRegs =
@@ -675,15 +676,13 @@ let doAssembler (iList: (ParsedInstr * string option) list):MachineRepresentatio
         
     let checkPseudo (machState, pointer) elem =       
         let addData machS p d =
-            let rec checkSyntax tokList =
-                match tokList with
-                | TokIntLit x :: TokComma :: r -> checkSyntax r
-                | [TokIntLit x] -> true
-                | _ -> false
-            let transData acc elem =
-                match elem with 
-                | TokIntLit x -> x :: acc
-                | _ -> acc
+            let rec createNumLst finLis tkLis =
+                match tkLis with
+                | TokNeg :: TokIntLit x :: TokComma :: r -> createNumLst (-x :: finLis) r
+                | TokIntLit x :: TokComma :: r -> createNumLst (x :: finLis) r
+                | TokNeg :: [TokIntLit x] -> -x :: finLis
+                | [TokIntLit x] -> x :: finLis
+                | _ -> failwith "Syntax error: wrong syntax used for DCD/DCB, check if values are comma separated"
             let doWordMemWrite mS po nLst =
                 List.fold (fun acc elem -> {(fst acc) with Memory = Map.add (snd acc) (Word elem) (fst acc).Memory}, (snd acc)+4u) (mS, po) (List.rev nLst)
             let doByteMemWrite mS po nLst =
@@ -699,14 +698,14 @@ let doAssembler (iList: (ParsedInstr * string option) list):MachineRepresentatio
                     | num -> num 
                 List.map checkBytes (List.rev nLst)
                 |> createWordsFromBytes
+                |> List.rev
                 |> doWordMemWrite mS po
-            if (checkSyntax d.Vals) then
-                let numList = List.fold transData [] d.Vals
-                match d.B with
-                | true -> doByteMemWrite machS p numList
-                | false -> doWordMemWrite machS p numList
-            else
-                failwith "Syntax error: Wrong syntax of DCB/DCB, make sure you have comma separated values"
+            
+            let numList = (createNumLst [] d.Vals)
+            match d.B with
+            | true -> doByteMemWrite machS p numList
+            | false -> doWordMemWrite machS p numList
+           
         
         let addEmpty machS p (num:uint32) =
            
@@ -765,14 +764,8 @@ let doAssembler (iList: (ParsedInstr * string option) list):MachineRepresentatio
     |> fst
     
     
-let programASM = "AND R1, R2, R3, LSR #4
-start ADDSNE R1, R2, R3
-lopp DCD 21,22
-ADR R1, gg
-LDR R1, [R2, R4]!
-LDMIA R0, {R1, R2, R3, R4}
-FILL 4
-gg DCB 1,2,3,4
+let programASM = "
+gg DCB 1,2,-3,4,5,-6,7,8,9
 "
 programASM
 |> tokenise
