@@ -230,7 +230,7 @@ let moveList = ["MOV"; "MVN"]
 let tstList = ["TST"; "TEQ"; "CMP"; "CMN"]
 let shiftList = ["ASR"; "LSL"; "LSR"; "ROR"; "RRX"]
 let mulList = ["MUL"; "MLA"; "MLS"; "UMULL"; "UMLAL"; "SMULL"; "SMLAL"]
-let condList = [ "EQ"; "NE"; "CS"; "CC"; "MI"; "PL"; "VS"; "VC"; "HI"; "LS"; "GE"; "LT"; "GT"; "LE"; "AL"; "NV"]
+let condList = [ "EQ"; "NE"; "CS"; "CC"; "MI"; "PL"; "VS"; "VC"; "HI"; "HS"; "LO"; "LS"; "GE"; "LT"; "GT"; "LE"; "AL"; "NV"]
 
 let dirList = ["IA"; "IB"; "DA"; "DB"; "ED"; "FD"; "EA"; "FA"]
 let regList = [ "R10"; "R11"; "R12"; "R13"; "R14"; "R15"; "R0"; "R1"; "R2"; "R3"; "R4"; "R5"; "R6"; "R7"; "R8"; "R9"]
@@ -327,6 +327,8 @@ let toCond (c:string):ConditionCode =
     match c with
     | "EQ" -> EQ
     | "NE" -> NE
+    | "HS" -> CS
+    | "LO" -> CC
     | "CS" -> CS
     | "CC" -> CC
     | "MI" -> MI
@@ -398,8 +400,9 @@ let toDir i (isLoad:bool):Dir =
 let matchFlexNew t =
     match t with
         | [TokReg r1] -> Shift(LSL, Immediate 0 ,(toReg r1))
-        | TokReg r1 :: TokComma :: TokOp sh :: TokHash :: [TokIntLit x] when (List.exists (fun elem -> elem = sh) shiftList) -> Shift(toSInstr sh ,Immediate x, (toReg r1))
-        | TokReg r1 :: TokComma :: TokOp sh :: [TokReg r2] when (List.exists (fun elem -> elem = sh) shiftList) -> Shift(toSInstr sh , Register (toReg r2), (toReg r1))
+        | TokReg r1 :: TokComma :: TokOp sh :: TokHash :: [TokIntLit x] when (List.exists (fun elem -> elem = sh) shiftList) && sh <> "RRX" -> Shift(toSInstr sh ,Immediate x, (toReg r1))
+        | TokReg r1 :: TokComma :: TokOp sh :: [TokReg r2] when (List.exists (fun elem -> elem = sh) shiftList) && sh <> "RRX" -> Shift(toSInstr sh , Register (toReg r2), (toReg r1))
+        | TokReg r1 :: TokComma :: [TokOp sh] when sh = "RRX" -> Shift(toSInstr sh, Immediate 0, (toReg r1))
         | TokHash :: [TokIntLit x] -> (Const x)
         | TokHash :: TokNeg :: [TokIntLit x] -> (Const -x)
         | _ -> failwith "Syntax error: Flex operand has invalid syntax, flex op is used at the end of arithmetic, move and test instruction"
@@ -662,7 +665,7 @@ let createInstList (tokList:Token list list):(ParsedInstr * string option) list 
     
 
 let myRegs =
-   [ R0, 0;  R1, 0;  R2, 0; R3, 0; R4, 0; R5, 0;  R6, 0; R7, 0; R8, 0; R9, 0; R10, 0; R11, 0; R12, 0; R13, 0;  R14, 0; R15, 0]
+   [ R0, 0;  R1, 0;  R2, 0; R3, 0; R4, 0; R5, 0;  R6, 0; R7, 0; R8, 0; R9, 0; R10, 0; R11, 0; R12, 0; R13, 0xFF000000;  R14, 0; R15, 8]
    |> Map.ofList
 
 let doAssembler (iList: (ParsedInstr * string option) list):MachineRepresentation = 
@@ -769,6 +772,7 @@ let doAssembler (iList: (ParsedInstr * string option) list):MachineRepresentatio
     
 let programASM = "
 B hr
+MOV R1, R2, RRX
 HR add r1,r2,r3
 gg DCB 1,2,-3,4,5,-6,7,8,9
 "
