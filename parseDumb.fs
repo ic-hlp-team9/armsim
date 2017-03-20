@@ -218,13 +218,13 @@ let explodeByLine (str: string) =
 
 let opList = [ "AND" ; "EOR" ; "SUB"; "RSB"; "ADD"; "ADC"; "SBC";"RSC"; "ORR"; "BIC"; 
     "MOV"; "MVN"; "TST"; "TEQ"; "CMP"; "CMN"; "ASR"; "LSL"; "LSR"; "ROR"; "RRX"; 
-    "MUL"; "MLA"; "MLS"; "UMULL"; "UMLAL"; "SMULL"; "SMLAL"; "B"; "BL" ; "DCD"; "DCB"; "FILL";
+    "MUL"; "MLA"; "MLS"; "UMULL"; "UMLAL"; "SMULL"; "SMLAL"; "BL"; "B" ; "DCD"; "DCB"; "FILL";
     "LDR"; "LDRB"; "STR"; "STRB"; "LDM"; "STM"; "ADR"]
 
 let multMemList = ["LDM"; "STM"]
 let singleMemList = ["LDR"; "LDRB"; "STR"; "STRB"]
 let dataList = ["DCD"; "DCB"; "FILL"]
-let branList = ["B"; "BL"]
+let branList = ["BL"; "B"]
 let arithList = ["AND" ; "EOR" ; "SUB"; "RSB"; "ADD"; "ADC"; "SBC";"RSC"; "ORR"; "BIC"]
 let moveList = ["MOV"; "MVN"]
 let tstList = ["TST"; "TEQ"; "CMP"; "CMN"]
@@ -472,14 +472,14 @@ let parseShiftInstr tokList =
     let mutable cond = None;
     let matchImReg t =
         match t with
-        | [TokReg r1] when sInst.Op <> RRX -> (cond, ShiftInstr {sInst with Op2 = Register (toReg r1)})
-        | TokHash :: [TokIntLit x] when sInst.Op <> RRX && x<256 -> (cond, ShiftInstr {sInst with Op2 = Immediate x})
-        | TokHash :: TokNeg :: [TokIntLit x] when sInst.Op <> RRX -> failwith "Value error: Shift value cannot be negative"
+        | TokComma :: [TokReg r1] when sInst.Op <> RRX -> (cond, ShiftInstr {sInst with Op2 = Register (toReg r1)})
+        | TokComma :: TokHash :: [TokIntLit x] when sInst.Op <> RRX && x<256 -> (cond, ShiftInstr {sInst with Op2 = Immediate x})
+        | TokComma :: TokHash :: TokNeg :: [TokIntLit x] when sInst.Op <> RRX -> failwith "Value error: Shift value cannot be negative"
         | [] when sInst.Op = RRX -> (cond, ShiftInstr {sInst with Op2 = Immediate 0})
         | _ -> failwith "Syntax error: Check your shift instruction, remember special case for RRX and maximum value of immediate"
     let matchRegs t =
         match t with
-        | TokReg r1 :: TokComma :: TokReg r2 :: TokComma :: r -> (sInst <- {sInst with Rd = toReg r1; Rn = toReg r2}); (matchImReg r)
+        | TokReg r1 :: TokComma :: TokReg r2 :: r -> (sInst <- {sInst with Rd = toReg r1; Rn = toReg r2}); (matchImReg r)
         | _ -> failwith "Syntax error: Check your shift instruction, possible comma missing"
     let matchCond t =
         match t with
@@ -729,15 +729,18 @@ let doAssembler (iList: (ParsedInstr * string option) list):MachineRepresentatio
         match preAL.Address with
         | x when (Map.containsKey x progMap) -> (cnd, MoveInstr {Op = MOV; S = false; Rd = preAL.Rd; Op2 = Const (int (Map.find x progMap))})
         | _ -> failwith "Assembler error: Loading address of unknown label"
+    let mutable c = 0u
+    let addLabels elem =
+        match elem with 
+        | (instr, Some str) -> progMap <- progMap.Add(str, c); c <- c+4u; elem
+        | (instr, _ ) -> c <- c+4u; elem
+
     let addInstruction (machState, count:Address) (elem:(Instr * string option)) =
         //let count:uint32 = 0u
         let addIn count (elem:(Instr * string option)) =
-            match elem with
-            | (x, PreAssembleAL instr), Some str -> progMap <- progMap.Add(str, count); machState.Memory.Add(count, Instr (assembleAddresLoad (x,instr)))
-            | (x, PreAssembleAL instr), _  -> machState.Memory.Add(count, Instr (assembleAddresLoad (x,instr)))
-            | (x, PreAssembleBI instr), Some str -> progMap <- progMap.Add(str, count); machState.Memory.Add(count, Instr (assembleBranch (x,instr)))
-            | (x, PreAssembleBI instr), _  -> machState.Memory.Add(count, Instr (assembleBranch (x,instr)))
-            | (instr, Some str) -> progMap <- progMap.Add(str, count); machState.Memory.Add(count, Instr instr)
+            match elem with       
+            | (x, PreAssembleAL instr), _  -> machState.Memory.Add(count, Instr (assembleAddresLoad (x,instr)))          
+            | (x, PreAssembleBI instr), _  -> machState.Memory.Add(count, Instr (assembleBranch (x,instr)))            
             | (instr, _ ) -> machState.Memory.Add(count, Instr instr)       
         
         ({machState with Memory = (addIn count elem)}, count + 4u)
@@ -759,12 +762,14 @@ let doAssembler (iList: (ParsedInstr * string option) list):MachineRepresentatio
         | _ -> false
 
     List.filter removePI iList
-    |> List.map transformList 
+    |> List.map (transformList >> addLabels)
     |> List.fold addInstruction (final, 0u) //iList
     |> fst
     
     
 let programASM = "
+B hr
+HR add r1,r2,r3
 gg DCB 1,2,-3,4,5,-6,7,8,9
 "
 programASM
