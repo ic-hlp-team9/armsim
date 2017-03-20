@@ -18,8 +18,8 @@ let writeRegister (rd:RegisterName) (machineState:MachineRepresentation) (res:in
   Map.add rd res machineState.Registers
 
 
-let barrelShift (op:ShiftOp) (data:Register) (shift:int) (machineState:MachineRepresentation) : int*bool = //Returns the result of a shift operation in a tuple with the produced carry
-  let getCarry (shiftDir:ShiftOperation) (f:int->int->int) (x:int) (y:int) : int*bool =
+let barrelShift (op:ShiftOp) (data:Register) (shift:ImReg) (machineState:MachineRepresentation) : int*bool = //Returns the result of a shift operation in a tuple with the produced carry
+  let getCarry (shiftDir:ShiftOperation) (f:int->int->int) (y:int) (x:int) : int*bool =
     let carryCheck =
       match shiftDir with
       | Right -> 1
@@ -29,32 +29,35 @@ let barrelShift (op:ShiftOp) (data:Register) (shift:int) (machineState:MachineRe
       | _ -> let carryRes = f x (y-1);
              (f x y), (carryRes &&& carryCheck <> 0)
 
-  let rotateRight (reg:int) (shift:int) =
+  let ror (reg:int) (shift:int) =
       let longReg = int64 reg
       let rotated = longReg <<< (32 - shift%32)
       int (longReg >>> shift%32 ||| rotated)
 
-  let rorateRightX (a:int) _ = machineState.CPSR.C |> boolToInt |> fun x -> x <<< 31 |> (|||) (a >>> 1)
-  let logicalShiftRight = fun (a:int) (b:int) -> int ((uint32 a) >>> b)
+  let rrx _ (a:int) = machineState.CPSR.C |> boolToInt |> fun x -> x <<< 31 |> (|||) (a >>> 1)
+  let lsR = fun (a:int) (b:int) -> int ((uint32 a) >>> b)
+
+  let shiftVal =
+    match shift with
+    | Immediate n when n > 32 || n < 0 -> failwithf "Invalid shift immediate value"
+    | Immediate n -> n
+    | Register r -> machineState.Registers.[r] &&& 255
 
   let shiftFun =
     match op with
     | ASR -> getCarry Right (>>>)
-    | LSR -> getCarry Right logicalShiftRight
-    | ROR -> getCarry Right rotateRight
+    | LSR -> getCarry Right lsR
+    | ROR -> getCarry Right ror
     | LSL -> getCarry Left (<<<)
-    | RRX -> getCarry Right rorateRightX
+    | RRX -> getCarry Right rrx
 
-  shiftFun data shift
+  shiftFun shiftVal data
 
-let unpackImgReg (machineState:MachineRepresentation) = function
-          | Immediate n -> n
-          | Register r -> machineState.Registers.[r]
 
 let secondOp (flexOp:FlexOp) (machineState:MachineRepresentation) : int*bool =
   match flexOp with
   | Const n -> int n, false
-  | Shift (sOp, shift, Rn) -> barrelShift sOp machineState.Registers.[Rn] (unpackImgReg machineState shift) machineState
+  | Shift (sOp, shift, Rn) -> barrelShift sOp machineState.Registers.[Rn] shift machineState
 
 
 let getMemWord (byteAddressing:bool) (address:Address) (machineState:MachineRepresentation) : Word =
@@ -175,7 +178,7 @@ let execMoveInstr (movInstr:MoveInstr) (machineState:MachineRepresentation) : Ma
 
 
 let execShiftInstr (shiftInstr:ShiftInstr) (machineState:MachineRepresentation) : MachineRepresentation =
-    let op1, op2 = machineState.Registers.[shiftInstr.Rn], unpackImgReg machineState shiftInstr.Op2
+    let op1, op2 = machineState.Registers.[shiftInstr.Rn], (shiftInstr.Op2)
     let res, carry = barrelShift shiftInstr.Op op1 op2 machineState
     let flags =
       match shiftInstr.S with
@@ -211,19 +214,20 @@ let execSingleMemInstr (memInstr:SingleMemInstr) (machineState:MachineRepresenta
 
 
 let execMultiMemInstr (memInstr:MultiMemInstr) (machineState:MachineRepresentation) : MachineRepresentation =
+  let pointer = machineState.Registers.[memInstr.Pointer]
   let offset, initPointer =
     match memInstr.Dir with
-    | IA -> 4, machineState.Registers.[memInstr.Pointer]
-    | IB -> 4, machineState.Registers.[memInstr.Pointer] + 4
-    | DA -> -4, machineState.Registers.[memInstr.Pointer]
-    | DB -> -4, machineState.Registers.[memInstr.Pointer] - 4
+    | IA -> 4, pointer
+    | IB -> 4, pointer + 4
+    | DA -> -4, pointer
+    | DB -> -4, pointer - 4
   let memFun =
     match memInstr.Op with
-    | LDM -> fun (ms, pt) reg -> ({ms with Registers = (writeRegister reg machineState (getMemWord false pt ms))}, uint32 (int pt + offset))
+    | LDM -> fun (ms, pt) reg -> ({ms with Registers = (writeRegister reg ms (getMemWord false pt ms))}, uint32 (int pt + offset))
     | STM -> fun (ms, pt) reg -> ((storeMemWord false pt ms.Registers.[reg] ms), uint32 (int pt + offset))
-  let loadedState = List.fold memFun (machineState, uint32 initPointer) memInstr.Rlist |> fst
+  let loadedState, finalPointer = List.fold memFun (machineState, uint32 initPointer) memInstr.Rlist |> fst, pointer + offset*(List.length memInstr.Rlist)
   match memInstr.WriteBack with
-  | true -> loadedState
+  | true -> {loadedState with Registers = writeRegister memInstr.Pointer loadedState (int finalPointer)}
   | false -> {loadedState with Registers = writeRegister memInstr.Pointer loadedState machineState.Registers.[memInstr.Pointer]}
 
 
