@@ -5,7 +5,7 @@ open Types
 let fetch (machineState:MachineRepresentation) : PossiblyDecodedWord =
     let pc = machineState.Registers.[R15] |> uint32
     match Map.containsKey pc machineState.Memory  with
-    | false -> failwithf "No instruction found at given address"
+    | false -> failwithf "Runtime Error: Empty memory cell accessed during instruction fetch"
     | true -> machineState.Memory.[pc]
 
 
@@ -64,26 +64,26 @@ let getMemWord (byteAddressing:bool) (address:Address) (machineState:MachineRepr
   match Map.containsKey (address-address%4u) (machineState.Memory) with
   | false -> 0
   | true ->  match byteAddressing with
-             | false when address%4u <> 0u -> failwithf "Unaligned memory access"
+             | false when address%4u <> 0u -> failwithf "Runtime Error: Unaligned memory access"
              | false -> match machineState.Memory.[address] with
                         | Word w -> w
-                        | Instr intr -> failwithf "Data access attemp within instruction space"
+                        | Instr intr -> failwithf "Runtime Error: Data access attemp within instruction space"
              | true  -> match machineState.Memory.[address-address%4u], int (address%4u) with
                         | Word w, offset -> w |> (<<<)  (24-8*offset) |> (>>>) 24
-                        | Instr instr, _ -> failwithf "Data access attemp within instruction space"
+                        | Instr instr, _ -> failwithf "Runtime Error: Data access attemp within instruction space"
 
 
 let storeMemWord (byteAddressing:bool) (address:Address) (word:Word) (machineState:MachineRepresentation) : MachineRepresentation =
  match byteAddressing with
- | false when address%4u <> 0u -> failwithf "Unaligned memory access"
+ | false when address%4u <> 0u -> failwithf "Runtime Error: Unaligned memory access"
  | false when not (Map.containsKey (address-address%4u) (machineState.Memory)) -> {machineState with Memory = Map.add address (Word word) machineState.Memory}
  | false -> match machineState.Memory.[address] with
             | Word oldContent -> {machineState with Memory = Map.add address (Word word) machineState.Memory}
-            | Instr intr -> failwithf "Data access attemp within instruction space"
+            | Instr intr -> failwithf "Runtime Error: Data access attemp within instruction space"
  | true  -> match machineState.Memory.[address-address%4u], int (address%4u) with
             | Word w, offset -> let newWord = 0xFF |> (<<<)  (8*offset) |> (~~~) |> (&&&) w |> (|||) (word &&& 0xff <<< 8*offset)
                                 {machineState with Memory = Map.add address (Word newWord) machineState.Memory}
-            | Instr instr, _ -> failwithf "Data access attemp within instruction space"
+            | Instr instr, _ -> failwithf "Runtime Error: Data access attemp within instruction space"
 
 
 let getAddFlags (operation:ArithOperation) (carry:int) (x:int) (y:int) : int*CPSR = //Returns a tuple of result and all flags computed on ArithOperation (x y) with optional carry/borrow in
@@ -215,17 +215,17 @@ let execSingleMemInstr (memInstr:SingleMemInstr) (machineState:MachineRepresenta
 
 let execMultiMemInstr (memInstr:MultiMemInstr) (machineState:MachineRepresentation) : MachineRepresentation =
   let pointer = machineState.Registers.[memInstr.Pointer]
-  let offset, initPointer =
+  let offset, initPointer, sortedRegList =
     match memInstr.Dir with
-    | IA -> 4, pointer
-    | IB -> 4, pointer + 4
-    | DA -> -4, pointer
-    | DB -> -4, pointer - 4
+    | IA -> 4, pointer, List.sort (memInstr.Rlist)
+    | IB -> 4, pointer + 4, List.sort (memInstr.Rlist)
+    | DA -> -4, pointer, List.sort (memInstr.Rlist) |> List.rev
+    | DB -> -4, pointer - 4, List.sort (memInstr.Rlist) |> List.rev
   let memFun =
     match memInstr.Op with
     | LDM -> fun (ms, pt) reg -> ({ms with Registers = (writeRegister reg ms (getMemWord false pt ms))}, uint32 (int pt + offset))
     | STM -> fun (ms, pt) reg -> ((storeMemWord false pt ms.Registers.[reg] ms), uint32 (int pt + offset))
-  let loadedState, finalPointer = List.fold memFun (machineState, uint32 initPointer) memInstr.Rlist |> fst, pointer + offset*(List.length memInstr.Rlist)
+  let loadedState, finalPointer = List.fold memFun (machineState, uint32 initPointer) sortedRegList |> fst, pointer + offset*(List.length sortedRegList)
   match memInstr.WriteBack with
   | true -> {loadedState with Registers = writeRegister memInstr.Pointer loadedState (int finalPointer)}
   | false -> {loadedState with Registers = writeRegister memInstr.Pointer loadedState machineState.Registers.[memInstr.Pointer]}
@@ -312,7 +312,7 @@ let condMatch (machineState:MachineRepresentation) (cond:ConditionCode option) :
 
 let decode (possiblyInstr:PossiblyDecodedWord) (machineState:MachineRepresentation) : (MachineRepresentation->MachineRepresentation) =
     match possiblyInstr with
-    | Word _ -> failwithf "Word decoded"
+    | Word _ -> failwithf "Runtime Error: Data word encountered during instruction decode"
     | Instr instr ->
         match instr with
         | cond, someInstr when not (condMatch machineState cond) -> execMoveInstr {Op=MOV; S=false; Rd=R0; Op2=Shift (LSL, Immediate 0, R0)}
@@ -326,7 +326,7 @@ let decode (possiblyInstr:PossiblyDecodedWord) (machineState:MachineRepresentati
                | MemInstr memInstr -> match memInstr with
                                       | SingleMemInstr instr -> execSingleMemInstr instr
                                       | MultiMemInstr instr -> execMultiMemInstr instr
-               | _ -> failwithf "not implemented"
+               | _ -> failwithf "Runtime Error: Instruction not implemented"
 
 
 let execute ms = fun x -> x ms ms
