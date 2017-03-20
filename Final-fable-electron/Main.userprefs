@@ -1,0 +1,17 @@
+﻿<Properties StartupConfiguration="{AC4213F9-29F4-4B38-9955-E8D879161D2F}|Default">
+  <MonoDevelop.Ide.Workbench ActiveDocument="src/fs/instr.fs">
+    <Files>
+      <File FileName="src/fs/types.fs" Line="1" Column="9" />
+      <File FileName="src/fs/parse.fs" Line="603" Column="5" />
+      <File FileName="src/fs/instr.fs" Line="1" Column="9" />
+      <File FileName="src/fs/Main.fs" Line="121" Column="24" />
+    </Files>
+  </MonoDevelop.Ide.Workbench>
+  <MonoDevelop.Ide.Workspace ActiveConfiguration="Debug" />
+  <MonoDevelop.Ide.DebuggingService.Breakpoints>
+    <BreakpointStore />
+  </MonoDevelop.Ide.DebuggingService.Breakpoints>
+  <MonoDevelop.Ide.DebuggingService.PinnedWatches />
+  <MonoDevelop.Ide.ItemProperties.Main PreferredExecutionTarget="MonoDevelop.Default" />
+  <MultiItemStartupConfigurations />
+</Properties>

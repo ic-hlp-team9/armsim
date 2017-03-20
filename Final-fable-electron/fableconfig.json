@@ -1,0 +1,22 @@
+{
+  "sourceMaps": true,
+  "targets": {
+    "umd": {
+      "projFile": "./Main.fsproj",
+      "rollup": {
+        "dest": "./dist/umd/Main.js",
+        "format": "umd"
+      }
+    },
+    "test": {
+      "projFile": "./test/Test.fsproj",
+      "outDir": "./dist/test",
+      "module": "umd",
+      "coreLib": "fable-core/umd",
+      "plugins": ["./node_modules/fable-plugins-nunit/Fable.Plugins.NUnit.dll"],
+      "scripts": {
+        "postbuild": "mocha --reporter min --colors --sort --recursive ./dist/test/test/fs"
+      }
+    }
+  }
+}

@@ -1,0 +1,51 @@
+<!doctype html>
+<html>
+<head>
+</head>
+<body>
+<title>VALE</title>
+<meta charset="utf-8"/>
+<link rel="stylesheet" href="../node_modules/codemirror/lib/codemirror.css">
+<link rel="stylesheet" href="css/main.css">
+<script src="../node_modules/codemirror/lib/codemirror.js"></script>
+<link rel="stylesheet" type="text/css" href="../semantic/dist/semantic.min.css">
+<script
+  src="https://code.jquery.com/jquery-3.1.1.min.js"
+  integrity="sha256-hVVnYaiADRTO2PzUGmuLJr8BLUSjGIZsDYGmIJLv2b8="
+  crossorigin="anonymous"></script>
+<script src="../semantic/dist/semantic.min.js"></script>
+
+
+<div id="app_body" style="margin-left: 30px; margin-top: 10px;">
+<h2>VALE</h2>
+
+<div id="cont" style="width: 70%; float: right;">
+<div id="regs" style="width: 30%; float: left;">
+
+</div>
+<div id="status" style="width: 40%; float: right; margin-right: 120px;">
+	
+</div>
+<div id="memory" style="width: 40%; float: right; margin-right: 120px; margin-top: 20px">
+
+</div>
+</div>
+
+
+<div style="border: 1px solid; width: 25%">
+<textarea id = "code" name = "code">
+  
+</textarea>
+<button id="compile" class="ui button" style="margin-top: 5px; float: right; margin-right: 0px;" >Compile!</button>
+<button id="reset" class="ui button" style="margin-top: 5px; float: left; margin-right: 0px;">Reset!</button>
+</div>
+<div id="msg" style="margin-top: 50px; width: 25%; height: 100px;">
+	
+</div>
+<script> var fs = require('fs') </script>
+<script src="umd/Main.js"></script>
+
+</div>
+    
+</body>
+</html>

@@ -1,0 +1,17 @@
+
+
+body {
+	
+	padding-top: 0px; 
+	font-family: 'Roboto', sans-serif !important;
+	font-size: 18px;
+	overflow: auto
+  padding-left: 5px;
+  margin-left: 5px;
+ }
+
+.ui button {
+  margin-top: 5px;
+  text-align: right; 
+}
+

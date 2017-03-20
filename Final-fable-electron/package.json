@@ -1,0 +1,33 @@
+{
+  "name": "fable-electron",
+  "description": "Fully working Fable project using Electron and CodeMirror",
+  "version": "1.0.0",
+  "main": "./dist/umd/Main.js",
+  "devDependencies": {
+    "fable-compiler": "^0.7.7",
+    "fable-core": "^0.7.6",
+    "fable-plugins-nunit": "^0.7.1",
+    "fable-powerpack": "^0.0.18",
+    "mocha": "^3.1.2",
+    "electron": "^1.4.13",
+    "gulp": "^3.9.1",
+    "gulp-exec": "^2.1.3"
+  },
+  "scripts": {
+    "prepublish": "npm run build",
+    "build": "fable --target umd",
+    "watch": "fable --target umd --watch",
+    "go": "electron ElectronMain.js"
+  },
+  "dependencies": {
+    "codemirror": "^5.22.0",
+    "dialog": "^0.2.0",
+    "electron-connect": "^0.6.1",
+    "electron-default-menu": "^1.0.0",
+    "fable-import-electron": "^0.0.6",
+    "fs": "^0.0.1-security",
+    "remote": "^0.2.6",
+    "require": "^2.4.20",
+    "semantic-ui": "^2.2.9"
+  }
+}
