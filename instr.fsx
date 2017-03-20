@@ -17,6 +17,8 @@ let boolToInt = function
 let writeRegister (rd:RegisterName) (machineState:MachineRepresentation) (res:int) : RegisterFile = //Returns a new immutable Register File having performed a single write operation
   Map.add rd res machineState.Registers
 
+let incrementPc (machineState:MachineRepresentation) : MachineRepresentation =
+  {machineState with Registers = writeRegister R15 machineState (machineState.Registers.[R15] + 4)}
 
 let barrelShift (op:ShiftOp) (data:Register) (shift:ImReg) (machineState:MachineRepresentation) : int*bool = //Returns the result of a shift operation in a tuple with the produced carry
   let getCarry (shiftDir:ShiftOperation) (f:int->int->int) (y:int) (x:int) : int*bool =
@@ -174,7 +176,10 @@ let execMoveInstr (movInstr:MoveInstr) (machineState:MachineRepresentation) : Ma
       match movInstr.S with
       | false -> movFun op, machineState.CPSR
       | true -> flagFun op |> fun (r, f) -> r, {f with C=carry}
+
     {machineState with Registers=writeRegister movInstr.Rd machineState res; CPSR = flags}
+    |> fun ms -> if (movInstr.Rd=R15) then (incrementPc ms) else ms
+
 
 
 let execShiftInstr (shiftInstr:ShiftInstr) (machineState:MachineRepresentation) : MachineRepresentation =
@@ -229,7 +234,7 @@ let execMultiMemInstr (memInstr:MultiMemInstr) (machineState:MachineRepresentati
   match memInstr.WriteBack with
   | true -> {loadedState with Registers = writeRegister memInstr.Pointer loadedState (int finalPointer)}
   | false -> {loadedState with Registers = writeRegister memInstr.Pointer loadedState machineState.Registers.[memInstr.Pointer]}
-
+  |> fun ms -> if (List.contains R15 memInstr.Rlist) then (incrementPc ms) else ms
 
 let writeRegisters (registers: RegisterFile) (machineState:MachineRepresentation) : RegisterFile =
   Map.fold (fun acc key value -> Map.add key value acc) machineState.Registers registers
