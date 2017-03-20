@@ -3,22 +3,23 @@ module Instruction
 open Types
 
 let fetch (machineState:MachineRepresentation) : PossiblyDecodedWord =
-    let PC = machineState.Registers.[R15] |> uint32
-    match Map.containsKey PC machineState.Memory  with
+    let pc = machineState.Registers.[R15] |> uint32
+    match Map.containsKey pc machineState.Memory  with
     | false -> failwithf "No instruction found at given address"
-    | true -> machineState.Memory.[PC]
+    | true -> machineState.Memory.[pc]
+
 
 let boolToInt = function
     | true -> 1
     | false -> 0
 
 
-let writeRegister (rd:RegisterName) (machineState:MachineRepresentation) (res:int):RegisterFile =
+let writeRegister (rd:RegisterName) (machineState:MachineRepresentation) (res:int) : RegisterFile = //Returns a new immutable Register File having performed a single write operation
   Map.add rd res machineState.Registers
 
 
-let barrelShift (op:ShiftOp) (data:Register) (shift:int) (machineState:MachineRepresentation) =
-  let getCarry shiftDir f x y =
+let barrelShift (op:ShiftOp) (data:Register) (shift:int) (machineState:MachineRepresentation) : int*bool = //Returns the result of a shift operation in a tuple with the produced carry
+  let getCarry (shiftDir:ShiftOperation) (f:int->int->int) (x:int) (y:int) : int*bool =
     let carryCheck =
       match shiftDir with
       | Right -> 1
@@ -28,13 +29,13 @@ let barrelShift (op:ShiftOp) (data:Register) (shift:int) (machineState:MachineRe
       | _ -> let carryRes = f x (y-1);
              (f x y), (carryRes &&& carryCheck <> 0)
 
-  let rotateRight reg shift =
+  let rotateRight (reg:int) (shift:int) =
       let longReg = int64 reg
       let rotated = longReg <<< (32 - shift%32)
       int (longReg >>> shift%32 ||| rotated)
 
-  let rorateRightX a _ = machineState.CPSR.C |> boolToInt |> fun x -> x <<< 31 |> (|||) (a >>> 1)
-  let logicalShiftRight = fun a b -> int ((uint32 a) >>> b)
+  let rorateRightX (a:int) _ = machineState.CPSR.C |> boolToInt |> fun x -> x <<< 31 |> (|||) (a >>> 1)
+  let logicalShiftRight = fun (a:int) (b:int) -> int ((uint32 a) >>> b)
 
   let shiftFun =
     match op with
@@ -46,7 +47,7 @@ let barrelShift (op:ShiftOp) (data:Register) (shift:int) (machineState:MachineRe
 
   shiftFun data shift
 
-let unpackImgReg machineState = function
+let unpackImgReg (machineState:MachineRepresentation) = function
           | Immediate n -> n
           | Register r -> machineState.Registers.[r]
 
@@ -82,7 +83,7 @@ let storeMemWord (byteAddressing:bool) (address:Address) (word:Word) (machineSta
             | Instr instr, _ -> failwithf "Data access attemp within instruction space"
 
 
-let getAddFlags operation carry x y =
+let getAddFlags (operation:ArithOperation) (carry:int) (x:int) (y:int) : int*CPSR = //Returns a tuple of result and all flags computed on ArithOperation (x y) with optional carry/borrow in
     let a = uint64 (uint32 x)
     let b = match operation with
             | Subtraction -> uint64 (~~~(uint32 y)) + 1UL
@@ -107,7 +108,7 @@ let getAddFlags operation carry x y =
     int sres, {N=neg; Z=zero; C=carry; V=overflow}
 
 
-let getFlags f x y =
+let getFlags (f: int -> int -> int) (x:int) (y:int) : int*CPSR = //Returns a tuple of result and N, Z flags computed on f (x y)
    let res = f x y
    let myFlags = {N=false; Z=false; C=false; V=false}
    let resFlags = match res with
@@ -190,7 +191,7 @@ let execBranchInstr (branchInstr:BranchInstr) (machineState:MachineRepresentatio
   | false -> jumpState
   | true ->
     let link = machineState.Registers.[R15] + 4;
-    {jumpState with Registers = (writeRegister R14 machineState link)}
+    {jumpState with Registers = (writeRegister R14 jumpState link)}
 
 
 let execSingleMemInstr (memInstr:SingleMemInstr) (machineState:MachineRepresentation) : MachineRepresentation =
