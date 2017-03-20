@@ -233,7 +233,7 @@ let mulList = ["MUL"; "MLA"; "MLS"; "UMULL"; "UMLAL"; "SMULL"; "SMLAL"]
 let condList = [ "EQ"; "NE"; "CS"; "CC"; "MI"; "PL"; "VS"; "VC"; "HI"; "LS"; "GE"; "LT"; "GT"; "LE"; "AL"; "NV"]
 
 let dirList = ["IA"; "IB"; "DA"; "DB"; "ED"; "FD"; "EA"; "FA"]
-let regList = [ "R0"; "R1"; "R2"; "R3"; "R4"; "R5"; "R6"; "R7"; "R8"; "R9"; "R10"; "R11"; "R12"; "R13"; "R14"; "R15"]
+let regList = [ "R10"; "R11"; "R12"; "R13"; "R14"; "R15"; "R0"; "R1"; "R2"; "R3"; "R4"; "R5"; "R6"; "R7"; "R8"; "R9"]
 let rec charListStartsWith (x : char list) (str : string) = 
     let removeFirstChar (s:string) = 
         seq { for n in [1..s.Length-1] do yield str.[n]} 
@@ -297,7 +297,7 @@ let tokenise (src:string) =
         | '{' :: r -> TokLCbracket :: tokenise1 r
         | '}' :: r -> TokRCbracket :: tokenise1 r
         | '!' :: r -> TokExcl :: tokenise1 r
-        | _ -> failwithf "Invalid character input"
+        | _ -> failwith "Syntax error: Invalid character used in the input, check your code"
     src
     |> explodeByLine
     |> List.map tokenise1
@@ -402,7 +402,7 @@ let matchFlexNew t =
         | TokReg r1 :: TokComma :: TokOp sh :: [TokReg r2] when (List.exists (fun elem -> elem = sh) shiftList) -> Shift(toSInstr sh , Register (toReg r2), (toReg r1))
         | TokHash :: [TokIntLit x] -> (Const x)
         | TokHash :: TokNeg :: [TokIntLit x] -> (Const -x)
-        | _ -> failwithf "Invalid FlexOp syntax"
+        | _ -> failwith "Syntax error: Flex operand has invalid syntax, flex op is used at the end of arithmetic, move and test instruction"
 
 let parseArithInstr tokList =
     let mutable aInst:ArithLogicInstr = {Op = AND; S = false; Rd = R0; Rn = R0; Op2 = Shift (LSL, Immediate 0, R0)}
@@ -412,7 +412,7 @@ let parseArithInstr tokList =
     let matchRegs t =
         match t with
         | TokReg r1 :: TokComma :: TokReg r2 :: TokComma :: r -> (aInst <- {aInst with Rd = toReg r1; Rn = toReg r2}); (matchFlex r)
-        | _ -> failwithf "Invalid syntax"
+        | _ -> failwith "Syntax error: Check your arithmetic instruction, possible comma missing"
     let matchCond t =
         match t with
         | TokCond cnd :: r ->  cond <- Some (toCond cnd); (matchRegs r)
@@ -424,7 +424,7 @@ let parseArithInstr tokList =
 
     match tokList with
     | TokOp op :: t -> (aInst <- {aInst with Op = toAInstr op}); (matchS t)
-    | _ -> failwithf "Invalid syntax"
+    | _ -> failwith "Syntax error: Check your arithmetic instruction"
 
 
 let parseMoveInstr tokList =
@@ -435,7 +435,7 @@ let parseMoveInstr tokList =
     let matchRegs t =
         match t with
         | TokReg r1 :: TokComma :: r -> (mInst <- {mInst with Rd = toReg r1}); (matchFlex r)
-        | _ -> failwithf "Invalid syntax"
+        | _ -> failwith "Syntax error: Check your move instruction, possible comma missing"
     let matchCond t =
         match t with
         | TokCond cnd :: r ->  cond <- Some (toCond cnd); (matchRegs r)
@@ -447,7 +447,7 @@ let parseMoveInstr tokList =
 
     match tokList with
     | TokOp op :: t -> (mInst <- {mInst with Op = toMInstr op}); (matchS t)
-    | _ -> failwithf "Invalid syntax"
+    | _ -> failwith "Syntax error: Check your move instruction"
 
 let parseTestInstr tokList =
     let mutable tInst:TestInstr = {Op = TST; Rn = R0; Op2 = Shift (LSL,Immediate 0, R0)}
@@ -457,7 +457,7 @@ let parseTestInstr tokList =
     let matchRegs t =
         match t with
         | TokReg r1 :: TokComma :: r -> (tInst <- {tInst with Rn = toReg r1}); (matchFlex r)
-        | _ -> failwithf "Invalid syntax"
+        | _ -> failwith "Syntax error: Check your test instruction, possible comma missing"
     let matchCond t =
         match t with
         | TokCond cnd :: r ->  cond <- Some (toCond cnd); (matchRegs r)
@@ -465,7 +465,7 @@ let parseTestInstr tokList =
 
     match tokList with
     | TokOp op :: t -> (tInst <- {tInst with Op = toTInstr op}); (matchCond t)
-    | _ -> failwithf "Invalid syntax"
+    | _ -> failwith "Syntax error: Check your test instruction"
 
 let parseShiftInstr tokList =
     let mutable sInst:ShiftInstr = {Op = LSR; S = false; Rd = R0; Rn = R0; Op2 = Register R0}
@@ -473,14 +473,14 @@ let parseShiftInstr tokList =
     let matchImReg t =
         match t with
         | [TokReg r1] when sInst.Op <> RRX -> (cond, ShiftInstr {sInst with Op2 = Register (toReg r1)})
-        | TokHash :: [TokIntLit x] when sInst.Op <> RRX -> (cond, ShiftInstr {sInst with Op2 = Immediate x})
-        | TokHash :: TokNeg :: [TokIntLit x] when sInst.Op <> RRX -> (cond, ShiftInstr {sInst with Op2 = Immediate -x})
+        | TokHash :: [TokIntLit x] when sInst.Op <> RRX && x<256 -> (cond, ShiftInstr {sInst with Op2 = Immediate x})
+        | TokHash :: TokNeg :: [TokIntLit x] when sInst.Op <> RRX -> failwith "Value error: Shift value cannot be negative"
         | [] when sInst.Op = RRX -> (cond, ShiftInstr {sInst with Op2 = Immediate 0})
-        | _ -> failwithf "Invalid syntax"
+        | _ -> failwith "Syntax error: Check your shift instruction, remember special case for RRX and maximum value of immediate"
     let matchRegs t =
         match t with
         | TokReg r1 :: TokComma :: TokReg r2 :: TokComma :: r -> (sInst <- {sInst with Rd = toReg r1; Rn = toReg r2}); (matchImReg r)
-        | _ -> failwithf "Invalid syntax"
+        | _ -> failwith "Syntax error: Check your shift instruction, possible comma missing"
     let matchCond t =
         match t with
         | TokCond cnd :: r ->  cond <- Some (toCond cnd); (matchRegs r)
@@ -492,7 +492,7 @@ let parseShiftInstr tokList =
 
     match tokList with
     | TokOp op :: t -> (sInst <- {sInst with Op = toSInstr op}); (matchS t)
-    | _ -> failwithf "Invalid syntax"
+    | _ -> failwith "Syntax error: Check your shift instruction"
 
 let parseMulInstr tokList =
     let mutable mulInst:MultInstr = {Op = MUL; S=false; Rd=R0; Rm=R0; Rs=R0; Rn = None}
@@ -501,11 +501,11 @@ let parseMulInstr tokList =
         match t with
         | TokComma :: [TokReg r1] when mulInst.Op <> MUL -> (cond, MultInstr {mulInst with Rn = Some (toReg r1)})
         | [] when mulInst.Op = MUL -> (cond, MultInstr mulInst)
-        | _ -> failwithf "Invalid syntax"
+        | _ -> failwith "Syntax error: Check your multiplication instruction, remember special case for MUL"
     let matchRegs t =
         match t with
         | TokReg r1 :: TokComma :: TokReg r2 :: TokComma :: TokReg r3 :: r -> (mulInst <- {mulInst with Rd = toReg r1; Rm = toReg r2; Rs = toReg r3}); (matchLast r)
-        | _ -> failwithf "Invalid syntax"
+        | _ -> failwith "Syntax error: Check your multiplication instruction, possible comma missing"
     let matchCond t =
         match t with
         | TokCond cnd :: r ->  cond <- Some (toCond cnd); (matchRegs r)
@@ -517,7 +517,7 @@ let parseMulInstr tokList =
 
     match tokList with
     | TokOp op :: t -> (mulInst <- {mulInst with Op = toMulInstr op}); (matchS t)
-    | _ -> failwithf "Invalid syntax"
+    | _ -> failwith "Syntax error: Check your multiplication instruction"
 
 //type PreAssembleBI = {Cond: ConditionCode option; L:bool; Dest: string} 
 let parseBranInstr tokList =
@@ -526,7 +526,7 @@ let parseBranInstr tokList =
     let matchDest t =
         match t with
         | [TokStrLit x] -> (cond, PreAssembleBI {brInst with Dest = x})
-        | _ -> failwithf "Invalid syntax"
+        | _ -> failwith "Syntax error: Check your branch instruction syntax, possible uneccessary elements at the end"
     let matchCond t =
         match t with
         | TokCond cnd :: r ->  cond <- Some (toCond cnd); (matchDest r)
@@ -534,14 +534,14 @@ let parseBranInstr tokList =
     match tokList with
     | TokOp "BL" :: t -> (brInst <- {brInst with L = true}); (matchCond t)
     | TokOp "B" :: t -> matchCond t
-    | _ -> failwithf "Invalid syntax"
+    | _ -> failwith "Syntax error: Check your branch instruction syntax"
 
 let parseDataInstr tokList:PseudoInstr =
     match tokList with
     | TokOp "DCD" :: r -> DataI {B = false; Vals = r}
     | TokOp "DCB" :: r -> DataI {B = true; Vals = r}
     | TokOp "FILL" :: [TokIntLit x] when (x%4) = 0 -> Fill {Num = uint32 x}
-    | _ -> failwithf "Invalid syntax for Fill"
+    | _ -> failwith "Value error: FILL instruction have to have value divisible by 4"
 
 //type SingleMemInstr = {Op: SingleMemOp; Addressing: AddressingType; ByteAddressing: bool; Pointer: RegisterName; Rd: RegisterName; Offset: FlexOp}
 let parseSingleMemInstr tokList =
@@ -551,7 +551,7 @@ let parseSingleMemInstr tokList =
         match t with
         | [TokExcl] -> (cond, MemInstr (SingleMemInstr {smInstr with Addressing = Pre}))
         | [] -> (cond, MemInstr (SingleMemInstr smInstr))
-        | _ -> failwithf "syntax error"
+        | _ -> failwith "Syntax error: Correct your memory instruction, unnecessary characters at the end"
     let matchFlexInter t =
         match t with
         | TokReg r1 :: TokRSbracket :: r -> smInstr <- {smInstr with Offset = Shift(LSL, Immediate 0 ,(toReg r1))}; checkExcl r
@@ -559,17 +559,17 @@ let parseSingleMemInstr tokList =
         | TokReg r1 :: TokComma :: TokOp sh :: TokReg r2 :: TokRSbracket :: r when (List.exists (fun elem -> elem = sh) shiftList) -> smInstr <- {smInstr with Offset = Shift(toSInstr sh , Register (toReg r2), (toReg r1))}; checkExcl r
         | TokHash :: TokIntLit x :: TokRSbracket :: r -> smInstr <- {smInstr with Offset = (Const x)}; checkExcl r
         | TokHash :: TokNeg :: TokIntLit x :: TokRSbracket :: r -> smInstr <- {smInstr with Offset = (Const -x)}; checkExcl r
-        | _ -> failwithf "Invalid FlexOp syntax"
+        | _ -> failwith "Syntax error: Correct your memory instruction, possible wrong bracket or comma position"
     let matchLast t =
         match t with
         | TokLSbracket :: TokReg r1 :: [TokRSbracket] -> (cond, MemInstr (SingleMemInstr {smInstr with Pointer = toReg r1}))
         | TokLSbracket :: TokReg r1 :: TokRSbracket :: TokComma :: r -> (cond, MemInstr (SingleMemInstr {smInstr with Pointer = toReg r1; Offset = matchFlexNew r; Addressing = Post}))
         | TokLSbracket :: TokReg r1 :: TokComma :: r -> smInstr <- {smInstr with Pointer = toReg r1}; matchFlexInter r
-        | _ -> failwithf "Invalid syntax"
+        | _ -> failwith "Syntax error: Correct your memory instruction, possible wrong bracket or comma position"
     let matchReg t =
         match t with
         | TokReg r1 :: TokComma :: r -> (smInstr <- {smInstr with Rd = toReg r1}); matchLast r
-        | _ -> failwithf "Invalid syntax"
+        | _ -> failwith "Syntax error: Correct your memory instruction, possible comma missing"
     let matchCond t =
         match t with
         | TokCond cnd :: r ->  cond <- Some (toCond cnd); (matchReg r)
@@ -579,7 +579,7 @@ let parseSingleMemInstr tokList =
     | TokOp "LDRB" :: r -> (smInstr <- {smInstr with ByteAddressing = true}); matchCond r
     | TokOp "STR" :: r -> (smInstr <- {smInstr with Op = STR}); matchCond r
     | TokOp "STRB" :: r -> (smInstr <- {smInstr with Op = STR; ByteAddressing = true}); matchCond r
-    | _ -> failwithf "not possible"
+    | _ -> failwith "Not possible"
 
 //type MultiMemInstr = {Op: MultMemOp; Dir: Dir; Pointer: RegisterName; Rlist: RegisterName list; WriteBack: bool}
 let parseMultMemInstr tokList =
@@ -601,12 +601,12 @@ let parseMultMemInstr tokList =
                 | _ -> acc
             List.fold createRegList [] tokenList 
         else
-            failwithf "Wrong syntax in your list of registers"
+            failwith "Syntax error: The list of registers for LDM/STM has wrong format, or contains forbidden register"
     let matchPointer t =
         match t with
-        | TokReg r1 :: TokComma :: r -> (cond, MemInstr (MultiMemInstr {mmInstr with Pointer = toReg r1; Rlist = List.rev (makeListRegs r)}))
-        | TokReg r1 :: TokExcl :: TokComma :: r -> (cond, MemInstr (MultiMemInstr {mmInstr with Pointer = toReg r1; WriteBack = true; Rlist = List.rev (makeListRegs r)}))
-        | _ -> failwithf "Invalid syntax"
+        | TokReg r1 :: TokComma :: r when r1 <> "R15"-> (cond, MemInstr (MultiMemInstr {mmInstr with Pointer = toReg r1; Rlist = (makeListRegs r)}))
+        | TokReg r1 :: TokExcl :: TokComma :: r when r1 <> "R15" -> (cond, MemInstr (MultiMemInstr {mmInstr with Pointer = toReg r1; WriteBack = true; Rlist = (makeListRegs r)}))
+        | _ -> failwith "Syntax error: Wrong format of LDM/STM instruction, possible comma missing or you defined PC as pointer"
     let matchCond t =
         match t with
         | TokCond cnd :: r ->  cond <- Some (toCond cnd); (matchPointer r)
@@ -614,7 +614,7 @@ let parseMultMemInstr tokList =
     match tokList with
     | TokOp "LDM" :: TokDir d :: r -> mmInstr <- {mmInstr with Dir = (toDir d true)}; matchCond r
     | TokOp "STM" :: TokDir d :: r -> mmInstr <- {mmInstr with Op = STM; Dir = (toDir d false)}; matchCond r
-    | _ -> failwithf "Invalid syntax on your LDM/STM"
+    | _ -> failwith "Syntax error: Wrong format of LDM/STM instruction, check if you specify the stack direction"
 
 let parseAddrLoad tokList =
     let mutable cond = None
@@ -623,7 +623,7 @@ let parseAddrLoad tokList =
         match t with 
         | TokReg r1 :: TokComma :: [TokStrLit str] when isAdr ->  (cond, PreAssembleAL {Rd = toReg r1; Address = str})
         | TokReg r1 :: TokComma :: TokEq :: [TokStrLit str] when (not isAdr) -> (cond, PreAssembleAL {Rd = toReg r1; Address = str})
-        | _ -> failwithf "Invalid syntax"
+        | _ -> failwith "Syntax error: Address loading instructions (ADR/LDR) have wrong format"
     let matchCond t =
         match t with
         | TokCond cnd :: r ->  cond <- Some (toCond cnd); (matchRest r)
@@ -631,7 +631,7 @@ let parseAddrLoad tokList =
     match tokList with
     | TokOp "ADR" :: r -> isAdr <- true; matchCond r
     | TokOp "LDR" :: r -> matchCond r
-    | _ -> failwithf "Not possible"
+    | _ -> failwith "Not possible" //To get rid of warning 
 let parseInstr (tokList: Token list):ParsedInstr =
     match tokList with
     | TokOp "ADR" :: r -> I (parseAddrLoad tokList)
@@ -645,7 +645,7 @@ let parseInstr (tokList: Token list):ParsedInstr =
     | TokOp x :: r when (List.exists (fun elem -> elem = x) singleMemList) -> I ((parseSingleMemInstr tokList))
     | TokOp x :: r when (List.exists (fun elem -> elem = x) multMemList) -> I ((parseMultMemInstr tokList))
     | TokOp x :: r when (List.exists (fun elem -> elem = x) dataList) -> PI (parseDataInstr tokList)
-    | _ -> failwithf "Unimplmeneted operand"
+    | _ -> failwith "Syntax error: Trying to execute unknown/unimplemented instruction"
 
 
 //(Instr option)*(string option) list
@@ -655,7 +655,7 @@ let createInstList (tokList:Token list list):(ParsedInstr * string option) list 
         | TokStrLit s :: TokOp x :: r -> (parseInstr (TokOp x :: r ), Some (s))
         | TokOp x :: r -> (parseInstr (TokOp x :: r ), None)
         //| [TokStrLit s] -> (None, Some s) //SPecial case, label is on separate line
-        | _ -> failwithf "Invalid syntax, please put the label on the same line as instruction"
+        | _ -> failwith "Syntax error: Please put the label on the same line as instruction"
     
     List.map preassmeblerInstrList tokList
     
@@ -683,8 +683,7 @@ let doAssembler (iList: (ParsedInstr * string option) list):MachineRepresentatio
             let transData acc elem =
                 match elem with 
                 | TokIntLit x -> x :: acc
-                | TokComma -> acc
-                | _ -> failwithf "Wrong format of DCD/B"
+                | _ -> acc
             let doWordMemWrite mS po nLst =
                 List.fold (fun acc elem -> {(fst acc) with Memory = Map.add (snd acc) (Word elem) (fst acc).Memory}, (snd acc)+4u) (mS, po) (List.rev nLst)
             let doByteMemWrite mS po nLst =
@@ -696,7 +695,7 @@ let doAssembler (iList: (ParsedInstr * string option) list):MachineRepresentatio
                     | [] -> []
                 let checkBytes x =
                     match x with
-                    | num when num > 255 || num < - 128 -> failwithf "Out of range"
+                    | num when num > 255 || num < - 128 -> failwith "Value error: When defining bytes, make sure values are not bigger than 8 bits"
                     | num -> num 
                 List.map checkBytes (List.rev nLst)
                 |> createWordsFromBytes
@@ -707,7 +706,7 @@ let doAssembler (iList: (ParsedInstr * string option) list):MachineRepresentatio
                 | true -> doByteMemWrite machS p numList
                 | false -> doWordMemWrite machS p numList
             else
-                failwithf "Invalid syntax in DCD/B"
+                failwith "Syntax error: Wrong syntax of DCB/DCB, make sure you have comma separated values"
         
         let addEmpty machS p (num:uint32) =
            
@@ -715,22 +714,22 @@ let doAssembler (iList: (ParsedInstr * string option) list):MachineRepresentatio
 
         match elem with
         | (PI (DataI x), Some str) -> progMap <- progMap.Add(str, pointer); (addData machState pointer x)
-        | (PI (DataI x), None) -> failwithf "Invalid syntax, put label in front of DCD/B"
+        | (PI (DataI x), None) -> failwith "Syntax error: Put label in front of DCD/DCB"
         | (PI (Fill x), Some str) -> progMap <- progMap.Add(str, pointer); addEmpty machState pointer x.Num 
         | (PI (Fill x), None) -> addEmpty machState pointer x.Num
         | (I x, _) -> (machState, pointer)
-       // | _ -> failwithf "Unimplemented pseudo operand"
+       // | _ -> failwith "Unimplemented pseudo operand"
  
     
     let assembleBranch (cnd,(preBr:PreAssembleBI)):Instr =
         let mutable brInst:BranchInstr = {L = false; Address = 0u}
         match preBr.Dest with
         | x when (Map.containsKey x progMap) -> (cnd, BranchInstr {brInst with L = preBr.L; Address = (Map.find x progMap)})
-        | _ -> failwithf "Unknown label"
+        | _ -> failwith "Assembler error: Branching to unknown label"
     let assembleAddresLoad (cnd, (preAL:PreAssembleAL)):Instr =
         match preAL.Address with
         | x when (Map.containsKey x progMap) -> (cnd, MoveInstr {Op = MOV; S = false; Rd = preAL.Rd; Op2 = Const (int (Map.find x progMap))})
-        | _ -> failwithf "Unknown label"
+        | _ -> failwith "Assembler error: Loading address of unknown label"
     let addInstruction (machState, count:Address) (elem:(Instr * string option)) =
         //let count:uint32 = 0u
         let addIn count (elem:(Instr * string option)) =
@@ -753,7 +752,7 @@ let doAssembler (iList: (ParsedInstr * string option) list):MachineRepresentatio
         match elem with
         | (I inst), Some str -> (inst, Some str)
         | (I inst), None -> (inst, None)
-        | _ -> failwithf "Let me out!"
+        | _ -> failwith "Something went horribly wrong"
     
     let removePI elem =
         match elem with
