@@ -23,15 +23,15 @@ let incrementPc (machineState:MachineRepresentation) : MachineRepresentation =
 
 
 let barrelShift (op:ShiftOp) (data:Register) (shift:ImReg) (machineState:MachineRepresentation) : int*bool = //Returns the result of a shift operation in a tuple with the produced carry
-  let getCarry (shiftDir:ShiftOperation) (f:int->int->int) (y:int) (x:int) : int*bool =
+  let getCarry (shiftDir:ShiftOperation) (f:int->int->int) (shiftVal:int) (data:int) : int*bool =
     let carryCheck =
       match shiftDir with
       | Right -> 1
       | Left -> -2147483648
-    match y with
-      | 0 -> x, false
-      | _ -> let carryRes = f x (y-1);
-             (f x y), (carryRes &&& carryCheck <> 0)
+    match shiftVal with
+      | 0 -> data, false
+      | _ -> let carryRes = f (data) (shiftVal-1);
+             (f data shiftVal), (carryRes &&& carryCheck <> 0)
 
   let ror (reg:int) (shift:int) =
       let longReg = int64 reg
@@ -199,7 +199,7 @@ let execBranchInstr (branchInstr:BranchInstr) (machineState:MachineRepresentatio
   match branchInstr.L with
   | false -> jumpState
   | true ->
-    let link = machineState.Registers.[R15];
+    let link = machineState.Registers.[R15] - 4;
     {jumpState with Registers = (writeRegister R14 jumpState link)}
 
 
