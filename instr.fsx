@@ -17,8 +17,10 @@ let boolToInt = function
 let writeRegister (rd:RegisterName) (machineState:MachineRepresentation) (res:int) : RegisterFile = //Returns a new immutable Register File having performed a single write operation
   Map.add rd res machineState.Registers
 
+
 let incrementPc (machineState:MachineRepresentation) : MachineRepresentation =
   {machineState with Registers = writeRegister R15 machineState (machineState.Registers.[R15] + 4)}
+
 
 let barrelShift (op:ShiftOp) (data:Register) (shift:ImReg) (machineState:MachineRepresentation) : int*bool = //Returns the result of a shift operation in a tuple with the produced carry
   let getCarry (shiftDir:ShiftOperation) (f:int->int->int) (y:int) (x:int) : int*bool =
@@ -36,7 +38,7 @@ let barrelShift (op:ShiftOp) (data:Register) (shift:ImReg) (machineState:Machine
       let rotated = longReg <<< (32 - shift%32)
       int (longReg >>> shift%32 ||| rotated)
 
-  let rrx _ (a:int) = machineState.CPSR.C |> boolToInt |> fun x -> x <<< 31 |> (|||) (a >>> 1)
+  let rrx (a:int) _ = machineState.CPSR.C |> boolToInt |> fun x -> x <<< 31 |> (|||) (a >>> 1)
   let lsR = fun (a:int) (b:int) -> int ((uint32 a) >>> b)
 
   let shiftVal =
@@ -54,7 +56,6 @@ let barrelShift (op:ShiftOp) (data:Register) (shift:ImReg) (machineState:Machine
     | RRX -> getCarry Right rrx
 
   shiftFun shiftVal data
-
 
 let secondOp (flexOp:FlexOp) (machineState:MachineRepresentation) : int*bool =
   match flexOp with
@@ -81,7 +82,7 @@ let storeMemWord (byteAddressing:bool) (address:Address) (word:Word) (machineSta
  | false when not (Map.containsKey (address-address%4u) (machineState.Memory)) -> {machineState with Memory = Map.add address (Word word) machineState.Memory}
  | false -> match machineState.Memory.[address] with
             | Word oldContent -> {machineState with Memory = Map.add address (Word word) machineState.Memory}
-            | Instr intr -> printfn "%A" address; failwithf "Runtime Error: Data access attemp within instruction space"
+            | Instr intr -> failwithf "Runtime Error: Data access attemp within instruction space"
  | true  -> match machineState.Memory.[address-address%4u], int (address%4u) with
             | Word w, offset -> let newWord = 0xFF |> (<<<)  (8*offset) |> (~~~) |> (&&&) w |> (|||) (word &&& 0xff <<< 8*offset)
                                 {machineState with Memory = Map.add address (Word newWord) machineState.Memory}
