@@ -151,6 +151,7 @@ type InstrType =
  | PreAssembleBI of PreAssembleBI
  | PreAssembleAL of PreAssembleAL
  | MemInstr of MemInstr
+ | EndInstr
 
 type Instr = ConditionCode option*InstrType
 
@@ -219,8 +220,7 @@ let explodeByLine (str: string) =
 let opList = [ "AND" ; "EOR" ; "SUB"; "RSB"; "ADD"; "ADC"; "SBC";"RSC"; "ORR"; "BIC"; 
     "MOV"; "MVN"; "TST"; "TEQ"; "CMP"; "CMN"; "ASR"; "LSL"; "LSR"; "ROR"; "RRX"; 
     "MUL"; "MLA"; "MLS"; "UMULL"; "UMLAL"; "SMULL"; "SMLAL"; "BL"; "B" ; "DCD"; "DCB"; "FILL";
-    "LDR"; "LDRB"; "STR"; "STRB"; "LDM"; "STM"; "ADR"]
-
+    "LDR"; "LDRB"; "STR"; "STRB"; "LDM"; "STM"; "ADR"; "END"]
 let multMemList = ["LDM"; "STM"]
 let singleMemList = ["LDR"; "LDRB"; "STR"; "STRB"]
 let dataList = ["DCD"; "DCB"; "FILL"]
@@ -637,6 +637,7 @@ let parseAddrLoad tokList =
     | _ -> failwith "Not possible" //To get rid of warning 
 let parseInstr (tokList: Token list):ParsedInstr =
     match tokList with
+    | [TokOp "END"] -> I (None,EndInstr)
     | TokOp "ADR" :: r -> I (parseAddrLoad tokList)
     | TokOp "LDR" :: r when (List.exists (fun elem -> elem = TokEq) r) -> I (parseAddrLoad tokList)
     | TokOp x :: r when (List.exists (fun elem -> elem = x) arithList) -> I (parseArithInstr tokList)
@@ -648,7 +649,7 @@ let parseInstr (tokList: Token list):ParsedInstr =
     | TokOp x :: r when (List.exists (fun elem -> elem = x) singleMemList) -> I ((parseSingleMemInstr tokList))
     | TokOp x :: r when (List.exists (fun elem -> elem = x) multMemList) -> I ((parseMultMemInstr tokList))
     | TokOp x :: r when (List.exists (fun elem -> elem = x) dataList) -> PI (parseDataInstr tokList)
-    | _ -> failwith "Syntax error: Trying to execute unknown/unimplemented instruction"
+    | _ -> failwith "Syntax error: Trying to execute unknown/unimplemented instruction, or your END instruction has wrong format"
 
 
 //(Instr option)*(string option) list
@@ -771,11 +772,10 @@ let doAssembler (iList: (ParsedInstr * string option) list):MachineRepresentatio
     
     
 let programASM = "
-B hr
-MOV R1, R2, RRX
-MOV R1, #-2147483648
-HR add r1,r2,r3
-gg DCB 1,2,-3,4,5,-6,7,8,9
+dta DCD 10,50,154252,53,0,1,15,1000,213,12
+LDR R0, =dta
+LDMFD R0!, {R1,R2,R3,R4,R5}
+ADCS R8, R3, R10, ROR R11
 "
 programASM
 |> tokenise
