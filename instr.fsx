@@ -132,8 +132,8 @@ let execArithLogicInstr (arithLogicInstr:ArithLogicInstr) (machineState:MachineR
         | RSB -> (fun a b -> b - a), fun x y -> (getAddFlags Subtraction 0) y x
         | ADD -> (+), getAddFlags Addition 0
         | ADC -> (fun a b -> (a + b + (machineState.CPSR.C |> boolToInt))), (getAddFlags Addition (machineState.CPSR.C |> boolToInt))
-        | SBC -> (fun a b -> (a - b - 1 + (machineState.CPSR.C |> boolToInt))), getAddFlags Subtraction (machineState.CPSR.C |> boolToInt |> (-) 1)
-        | RSC -> (fun a b -> (b - a - 1 + (machineState.CPSR.C |> boolToInt))), fun x y -> (getAddFlags Subtraction (machineState.CPSR.C |> boolToInt |> (-) 1) y x)
+        | SBC -> (fun a b -> (a - b - 1 + (machineState.CPSR.C |> boolToInt))), getAddFlags Subtraction (-1 + (machineState.CPSR.C |> boolToInt))
+        | RSC -> (fun a b -> (b - a - 1 + (machineState.CPSR.C |> boolToInt))), fun x y -> (getAddFlags Subtraction (-1 + (machineState.CPSR.C |> boolToInt)) y x)
         | ORR -> (|||), getFlags (|||)
         | BIC -> (fun x y -> x &&& ~~~y), getFlags (fun x y -> x &&& ~~~y)
     let arithLogicFun = (opMatch (arithLogicInstr.Op) |> fst)
