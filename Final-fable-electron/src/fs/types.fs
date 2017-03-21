@@ -159,6 +159,7 @@ type InstrType =
  | PreAssembleBI of PreAssembleBI
  | PreAssembleAL of PreAssembleAL
  | MemInstr of MemInstr
+ | EndInstr
 
 type Instr = ConditionCode option*InstrType
 

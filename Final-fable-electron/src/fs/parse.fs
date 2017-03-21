@@ -3,7 +3,7 @@ open types
 
 type Token = 
     | TokStrLit of string // string literal labels, with integer values permitted inside
-    | TokIntLit of int // integer literal 
+    | TokIntLit of int64 // integer literal 
     | TokOp of string // operators
     | TokDir of string //Used with ldm IA, IB...
     | TokCond of string //condition codes
@@ -54,8 +54,7 @@ let explodeByLine (str: string) =
 let opList = [ "AND" ; "EOR" ; "SUB"; "RSB"; "ADD"; "ADC"; "SBC";"RSC"; "ORR"; "BIC"; 
     "MOV"; "MVN"; "TST"; "TEQ"; "CMP"; "CMN"; "ASR"; "LSL"; "LSR"; "ROR"; "RRX"; 
     "MUL"; "MLA"; "MLS"; "UMULL"; "UMLAL"; "SMULL"; "SMLAL"; "BL"; "B" ; "DCD"; "DCB"; "FILL";
-    "LDR"; "LDRB"; "STR"; "STRB"; "LDM"; "STM"; "ADR"]
-
+    "LDR"; "LDRB"; "STR"; "STRB"; "LDM"; "STM"; "ADR"; "END"]
 let multMemList = ["LDM"; "STM"]
 let singleMemList = ["LDR"; "LDRB"; "STR"; "STRB"]
 let dataList = ["DCD"; "DCB"; "FILL"]
@@ -100,7 +99,7 @@ let (|IntMatch|_|) cLst =
       | _ -> []
     match implode (iMatch cLst) with
     | "" -> None // not an integer
-    | s -> Some (TokIntLit (int s), List.skip (s.Length) cLst)
+    | s -> Some (TokIntLit (int64 s), List.skip (s.Length) cLst)
 let (|StrMatch|_|) cLst =
     let rec sMatch lst =
       match lst with
@@ -235,10 +234,11 @@ let toDir i (isLoad:bool):Dir =
 let matchFlexNew t =
     match t with
         | [TokReg r1] -> Shift(LSL, Immediate 0 ,(toReg r1))
-        | TokReg r1 :: TokComma :: TokOp sh :: TokHash :: [TokIntLit x] when (List.exists (fun elem -> elem = sh) shiftList) -> Shift(toSInstr sh ,Immediate x, (toReg r1))
-        | TokReg r1 :: TokComma :: TokOp sh :: [TokReg r2] when (List.exists (fun elem -> elem = sh) shiftList) -> Shift(toSInstr sh , Register (toReg r2), (toReg r1))
-        | TokHash :: [TokIntLit x] -> (Const x)
-        | TokHash :: TokNeg :: [TokIntLit x] -> (Const -x)
+        | TokReg r1 :: TokComma :: TokOp sh :: TokHash :: [TokIntLit x] when (List.exists (fun elem -> elem = sh) shiftList) && sh <> "RRX" -> Shift(toSInstr sh ,Immediate (int x), (toReg r1))
+        | TokReg r1 :: TokComma :: TokOp sh :: [TokReg r2] when (List.exists (fun elem -> elem = sh) shiftList) && sh <> "RRX" -> Shift(toSInstr sh , Register (toReg r2), (toReg r1))
+        | TokReg r1 :: TokComma :: [TokOp sh] when sh = "RRX" -> Shift(toSInstr sh, Immediate 1, (toReg r1))
+        | TokHash :: [TokIntLit x] -> (Const (int x))
+        | TokHash :: TokNeg :: [TokIntLit x] -> (Const (int -x))
         | _ -> failwith "Syntax error: Flex operand has invalid syntax, flex op is used at the end of arithmetic, move and test instruction"
 
 let parseArithInstr tokList =
@@ -310,9 +310,9 @@ let parseShiftInstr tokList =
     let matchImReg t =
         match t with
         | TokComma :: [TokReg r1] when sInst.Op <> RRX -> (cond, ShiftInstr {sInst with Op2 = Register (toReg r1)})
-        | TokComma :: TokHash :: [TokIntLit x] when sInst.Op <> RRX && x<256 -> (cond, ShiftInstr {sInst with Op2 = Immediate x})
+        | TokComma :: TokHash :: [TokIntLit x] when sInst.Op <> RRX && x<256L -> (cond, ShiftInstr {sInst with Op2 = Immediate (int x)})
         | TokComma :: TokHash :: TokNeg :: [TokIntLit x] when sInst.Op <> RRX -> failwith "Value error: Shift value cannot be negative"
-        | [] when sInst.Op = RRX -> (cond, ShiftInstr {sInst with Op2 = Immediate 0})
+        | [] when sInst.Op = RRX -> (cond, ShiftInstr {sInst with Op2 = Immediate 1})
         | _ -> failwith "Syntax error: Check your shift instruction, remember special case for RRX and maximum value of immediate"
     let matchRegs t =
         match t with
@@ -377,7 +377,7 @@ let parseDataInstr tokList:PseudoInstr =
     match tokList with
     | TokOp "DCD" :: r -> DataI {B = false; Vals = r}
     | TokOp "DCB" :: r -> DataI {B = true; Vals = r}
-    | TokOp "FILL" :: [TokIntLit x] when (x%4) = 0 -> Fill {Num = uint32 x}
+    | TokOp "FILL" :: [TokIntLit x] when (x%4L) = 0L -> Fill {Num = uint32 x}
     | _ -> failwith "Value error: FILL instruction have to have value divisible by 4"
 
 //type SingleMemInstr = {Op: SingleMemOp; Addressing: AddressingType; ByteAddressing: bool; Pointer: RegisterName; Rd: RegisterName; Offset: FlexOp}
@@ -392,10 +392,10 @@ let parseSingleMemInstr tokList =
     let matchFlexInter t =
         match t with
         | TokReg r1 :: TokRSbracket :: r -> smInstr <- {smInstr with Offset = Shift(LSL, Immediate 0 ,(toReg r1))}; checkExcl r
-        | TokReg r1 :: TokComma :: TokOp sh :: TokHash :: TokIntLit x :: TokRSbracket :: r when (List.exists (fun elem -> elem = sh) shiftList) -> smInstr <- {smInstr with Offset = Shift(toSInstr sh ,Immediate x, (toReg r1))}; checkExcl r
+        | TokReg r1 :: TokComma :: TokOp sh :: TokHash :: TokIntLit x :: TokRSbracket :: r when (List.exists (fun elem -> elem = sh) shiftList) -> smInstr <- {smInstr with Offset = Shift(toSInstr sh ,Immediate (int x), (toReg r1))}; checkExcl r
         | TokReg r1 :: TokComma :: TokOp sh :: TokReg r2 :: TokRSbracket :: r when (List.exists (fun elem -> elem = sh) shiftList) -> smInstr <- {smInstr with Offset = Shift(toSInstr sh , Register (toReg r2), (toReg r1))}; checkExcl r
-        | TokHash :: TokIntLit x :: TokRSbracket :: r -> smInstr <- {smInstr with Offset = (Const x)}; checkExcl r
-        | TokHash :: TokNeg :: TokIntLit x :: TokRSbracket :: r -> smInstr <- {smInstr with Offset = (Const -x)}; checkExcl r
+        | TokHash :: TokIntLit x :: TokRSbracket :: r -> smInstr <- {smInstr with Offset = (Const (int x))}; checkExcl r
+        | TokHash :: TokNeg :: TokIntLit x :: TokRSbracket :: r -> smInstr <- {smInstr with Offset = (Const (int -x))}; checkExcl r
         | _ -> failwith "Syntax error: Correct your memory instruction, possible wrong bracket or comma position"
     let matchLast t =
         match t with
@@ -471,6 +471,7 @@ let parseAddrLoad tokList =
     | _ -> failwith "Not possible" //To get rid of warning 
 let parseInstr (tokList: Token list):ParsedInstr =
     match tokList with
+    | [TokOp "END"] -> I (None,EndInstr)
     | TokOp "ADR" :: r -> I (parseAddrLoad tokList)
     | TokOp "LDR" :: r when (List.exists (fun elem -> elem = TokEq) r) -> I (parseAddrLoad tokList)
     | TokOp x :: r when (List.exists (fun elem -> elem = x) arithList) -> I (parseArithInstr tokList)
@@ -482,7 +483,7 @@ let parseInstr (tokList: Token list):ParsedInstr =
     | TokOp x :: r when (List.exists (fun elem -> elem = x) singleMemList) -> I ((parseSingleMemInstr tokList))
     | TokOp x :: r when (List.exists (fun elem -> elem = x) multMemList) -> I ((parseMultMemInstr tokList))
     | TokOp x :: r when (List.exists (fun elem -> elem = x) dataList) -> PI (parseDataInstr tokList)
-    | _ -> failwith "Syntax error: Trying to execute unknown/unimplemented instruction"
+    | _ -> failwith "Syntax error: Trying to execute unknown/unimplemented instruction, or your END instruction has wrong format"
 
 
 //(Instr option)*(string option) list
@@ -540,8 +541,8 @@ let doAssembler (iList: (ParsedInstr * string option) list):MachineRepresentatio
             
             let numList = (createNumLst [] d.Vals)
             match d.B with
-            | true -> doByteMemWrite machS p numList
-            | false -> doWordMemWrite machS p numList
+            | true -> doByteMemWrite machS p  (List. map (int) numList)
+            | false -> doWordMemWrite machS p (List. map (int) numList)
            
         
         let addEmpty machS p (num:uint32) =
@@ -602,6 +603,7 @@ let doAssembler (iList: (ParsedInstr * string option) list):MachineRepresentatio
     |> List.map (transformList >> addLabels)
     |> List.fold addInstruction (final, 0u) //iList
     |> fst
+    
     
     
     

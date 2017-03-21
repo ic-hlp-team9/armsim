@@ -147,7 +147,7 @@ let main () =
     let cmEditor = App.CodeMirrorImports.CodeMirror.fromTextArea(editId, initOptions)
     printfn "Setting editor value"
     cmEditor.setValue ""
-    printfn "Line tokens: %A" (cmEditor.getLineTokens 0)
+    //printfn "Line tokens: %A" (cmEditor.getLineTokens 0)
     renderInitial()
     let compileOnClick() =
         (*
@@ -164,7 +164,7 @@ let main () =
                 cmEditor.getValue()
                 |> tokenise
                 |> createInstList
-                |> doAssembler
+                |> doAssembler      
                 |> execWrapper
             renderWindow (renderRegs res) (renderCPSR res) (renderMem res)
         with
