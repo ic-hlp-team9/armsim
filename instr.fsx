@@ -319,7 +319,7 @@ let decode (possiblyInstr:PossiblyDecodedWord) (machineState:MachineRepresentati
     match possiblyInstr with
     | Word _ -> failwithf "Runtime Error: Data word encountered during instruction decode"
     | Instr instr ->
-        printfn "%A" instr;
+        //printfn "%A" instr;
         match instr with
         | cond, someInstr when not (condMatch machineState cond) -> execMoveInstr {Op=MOV; S=false; Rd=R0; Op2=Shift (LSL, Immediate 0, R0)}
         | _ -> match snd instr with
@@ -351,8 +351,8 @@ let rec execWrapper (machineState:MachineRepresentation) : MachineRepresentation
   let filterInstr = function
   | Instr instr -> true
   | Word word -> false
-  let lastAddress = machineState.Memory |> Map.toList |> List.map snd |> List.filter (filterInstr) |> List.length
-  let stoppingCondition = (machineState.Registers.[R15]/4 = lastAddress)
+  let lastAddress = 4*(machineState.Memory |> Map.toList |> List.map snd |> List.filter (filterInstr) |> List.length)
+  let stoppingCondition = (machineState.Registers.[R15]-8 = lastAddress)
   match stoppingCondition with
   | true -> machineState
   | false -> execWrapper (pipeLine machineState)
