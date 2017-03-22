@@ -50,21 +50,21 @@ let RetBool stream y = match optJSBool y with | None -> None | _ -> Some stream
 /// Succeeds if one or more characters are matched.
 let (|EatSpace|_|) (stream:CodeMirrorStream) = 
    let x = stream.eatSpace()
-   printfn "Eating spaces...<%A>" x
+   //printfn "Eating spaces...<%A>" x
    x |> RetBool stream
 
 /// Active recogniser matches if regexp succeeds and consumes matches chars
 /// Regexp must start with ^ to force matching from start.
 let (|EatMatch|_|) (regExpStr:string) (stream:CodeMirrorStream) =
     let x = stream.``match`` (Regex regExpStr, true, false)
-    printfn "Eatmatch: %A" x
+    //printfn "Eatmatch: %A" x
     x |> RetObj stream
 
 /// Active recogniser matches if regexp succeeds but does not consume stream
 /// Regexp must start with ^ to force matching from start.
 let (|PeekMatch|_|) (regExpStr:string) (stream:CodeMirrorStream) =
     let x = stream.``match`` (Regex regExpStr, false, false)
-    printfn "Peekmatch: %A" x
+    //printfn "Peekmatch: %A" x
     x |> RetObj stream
 
 /// Active recogniser consumes stream until just before character c.
@@ -72,7 +72,7 @@ let (|PeekMatch|_|) (regExpStr:string) (stream:CodeMirrorStream) =
 let (|SkipTo|_|) (c:char) (stream:CodeMirrorStream) =
     let x = stream.skipTo(c.ToString())
     let y = optJSObj x
-    printfn "SkipTo:%A %A %A" x y (stream.current())
+    //printfn "SkipTo:%A %A %A" x y (stream.current())
     x |> RetObj stream
     
 
@@ -93,13 +93,13 @@ let (|EatLine|_|) (stream:CodeMirrorStream) =
 let tokFunction  (stream:CodeMirrorStream)  (state:obj) =
     let ret = 
         match stream with 
-        | EatSpace _ -> printfn "space 2"; "var2"
-        | EatMatch "^[a-zA-Z][a-zA-Z0-9]*" _ ->printfn "sym 3"; "atom"
-        | EatMatch "^//" (EatLine x) -> printfn "line 4";"comment"
-        | EatMatch "^[0-9][0-9]*" _ -> printfn "num 5";"number"
-        | EatMatch "^." s -> printfn "op 6";  "keyword"
-        | _ -> printfn "? 7"; null
-    printfn "Token: <%s '%s'> pos=%f" ret (stream.current()) stream.pos
+        | EatSpace _ -> "var2"
+        | EatMatch "^[a-zA-Z][a-zA-Z0-9]*" _ -> "atom"
+        | EatMatch "^//" (EatLine x) -> "comment"
+        | EatMatch "^[0-9][0-9]*" _ -> "number"
+        | EatMatch "^." s ->   "keyword"
+        | _ ->  null
+    //printfn "Token: <%s '%s'> pos=%f" ret (stream.current()) stream.pos
     ret
 
 /// Sample definition, with trivial state `0` which cannot be mutated

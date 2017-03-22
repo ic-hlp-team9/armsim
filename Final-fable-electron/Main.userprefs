@@ -1,10 +1,10 @@
 ﻿<Properties StartupConfiguration="{AC4213F9-29F4-4B38-9955-E8D879161D2F}|Default">
-  <MonoDevelop.Ide.Workbench ActiveDocument="src/fs/instr.fs">
+  <MonoDevelop.Ide.Workbench ActiveDocument="src/fs/Main.fs">
     <Files>
-      <File FileName="src/fs/types.fs" Line="1" Column="9" />
-      <File FileName="src/fs/parse.fs" Line="603" Column="5" />
-      <File FileName="src/fs/instr.fs" Line="1" Column="9" />
-      <File FileName="src/fs/Main.fs" Line="121" Column="22" />
+      <File FileName="src/fs/types.fs" Line="177" Column="1" />
+      <File FileName="src/fs/parse.fs" Line="609" Column="5" />
+      <File FileName="src/fs/instr.fs" Line="369" Column="1" />
+      <File FileName="src/fs/Main.fs" Line="182" Column="1" />
     </Files>
   </MonoDevelop.Ide.Workbench>
   <MonoDevelop.Ide.Workspace ActiveConfiguration="Debug" />
